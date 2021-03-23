@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using Inedo.Extensibility;
 
 [assembly: AssemblyTitle("Windows SDK")]
-[assembly: AssemblyDescription("Contains actions to build software targeting Windows or .NET platforms, including Build Project, MSBuild, Click Once, etc.")]
+[assembly: AssemblyDescription("Contains actions to build software using dotnet or msbuild.")]
 
 [assembly: ComVisible(false)]
 [assembly: AssemblyCompany("Inedo, LLC")]
