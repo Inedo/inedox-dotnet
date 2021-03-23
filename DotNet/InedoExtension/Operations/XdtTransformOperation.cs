@@ -9,7 +9,7 @@ using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.IO;
 
-namespace Inedo.Extensions.WindowsSdk.Operations
+namespace Inedo.Extensions.DotNet.Operations
 {
     [DisplayName("XDT Transform")]
     [ScriptAlias("XDT-Transform")]

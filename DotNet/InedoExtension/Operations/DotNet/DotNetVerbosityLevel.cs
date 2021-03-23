@@ -1,4 +1,4 @@
-﻿namespace Inedo.Extensions.WindowsSdk.Operations.DotNet
+﻿namespace Inedo.Extensions.DotNet.Operations.DotNet
 {
     public enum DotNetVerbosityLevel
     {

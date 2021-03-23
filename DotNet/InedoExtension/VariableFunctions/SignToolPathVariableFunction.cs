@@ -2,7 +2,7 @@
 using Inedo.Extensibility;
 using Inedo.Extensibility.VariableFunctions;
 
-namespace Inedo.Extensions.WindowsSdk.VariableFunctions
+namespace Inedo.Extensions.DotNet.VariableFunctions
 {
     [ScriptAlias("SignToolPath")]
     [Description("The full path to signtool.exe; if empty will attempt to resolve the path automatically.")]

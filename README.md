@@ -1,8 +1,6 @@
-# inedox-windowssdk
+# inedox-dotnet
 
-[![Build status](https://buildmaster.inedo.com/api/ci-badges/image?API_Key=badges&$ApplicationId=4)](https://buildmaster.inedo.com/api/ci-badges/link?API_Key=badges&$ApplicationId=4)
-
-Contains actions to build software targeting Windows or .NET platforms.
+Contains actions to build software targeting .NET or using MSBuild.
 
 ## Installation Instructions
 

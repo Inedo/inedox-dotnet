@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 using Inedo.Extensibility;
 using Inedo.Web;
 
-namespace Inedo.Extensions.WindowsSdk.SuggestionProviders
+namespace Inedo.Extensions.DotNet.SuggestionProviders
 {
     public sealed class BuildConfigurationSuggestionProvider : ISuggestionProvider
     {

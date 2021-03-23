@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Text;
 
-namespace Inedo.Extensions.WindowsSdk
+namespace Inedo.Extensions.DotNet
 {
     internal static class InternalExtensions
     {

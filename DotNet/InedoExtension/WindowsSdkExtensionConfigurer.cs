@@ -2,7 +2,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
-namespace Inedo.Extensions.WindowsSdk
+namespace Inedo.Extensions.DotNet
 {
     internal static class WindowsSdkExtensionConfigurer
     {

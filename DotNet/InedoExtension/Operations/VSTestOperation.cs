@@ -14,7 +14,7 @@ using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.IO;
 
-namespace Inedo.Extensions.WindowsSdk.Operations
+namespace Inedo.Extensions.DotNet.Operations
 {
     [ScriptAlias("Execute-VSTest")]
     [DisplayName("Execute VSTest Tests")]

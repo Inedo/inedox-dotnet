@@ -1,6 +1,6 @@
-WindowsSDK/packages/*
-WindowsSDK/*/bin/*
-WindowsSDK/*/obj/*
+DotNet/packages/*
+DotNet/*/bin/*
+DotNet/*/obj/*
 *.suo
 *.user
 .vs

@@ -5,7 +5,7 @@ using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Web;
 
-namespace Inedo.Extensions.WindowsSdk.SuggestionProviders
+namespace Inedo.Extensions.DotNet.SuggestionProviders
 {
     internal sealed class NuGetPackageSourceSuggestionProvider : ISuggestionProvider
     {

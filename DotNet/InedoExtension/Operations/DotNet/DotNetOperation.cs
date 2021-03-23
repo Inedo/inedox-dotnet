@@ -10,10 +10,10 @@ using Inedo.Diagnostics;
 using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
-using Inedo.Extensions.WindowsSdk.SuggestionProviders;
+using Inedo.Extensions.DotNet.SuggestionProviders;
 using Inedo.Web;
 
-namespace Inedo.Extensions.WindowsSdk.Operations.DotNet
+namespace Inedo.Extensions.DotNet.Operations.DotNet
 {
     [Tag(".net")]
     [DefaultProperty(nameof(ProjectPath))]

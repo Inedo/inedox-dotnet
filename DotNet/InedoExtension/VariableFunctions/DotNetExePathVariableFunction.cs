@@ -2,13 +2,13 @@
 using Inedo.Extensibility;
 using Inedo.Extensibility.VariableFunctions;
 
-namespace Inedo.Extensions.WindowsSdk.VariableFunctions
+namespace Inedo.Extensions.DotNet.VariableFunctions
 {
-    [ScriptAlias("VsTestExePath")]
-    [Description("The full path to vstest.console.exe; if empty will attempt to resolve the path automatically.")]
+    [ScriptAlias("DotNetExePath")]
+    [Description("Full path of dotnet.exe. The default is %PROGRAMFILES%\\dotnet\\dotnet.exe.")]
     [Category("Server")]
     [ExtensionConfigurationVariable(Required = false)]
-    public sealed class VsTestExePathVariableFunction : ScalarVariableFunction
+    public sealed class DotNetExePathVariableFunction : ScalarVariableFunction
     {
         protected override object EvaluateScalar(IVariableFunctionContext context) => string.Empty;
     }

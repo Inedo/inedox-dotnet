@@ -11,12 +11,12 @@ using Inedo.Diagnostics;
 using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
-using Inedo.Extensions.WindowsSdk.SuggestionProviders;
+using Inedo.Extensions.DotNet.SuggestionProviders;
 using Inedo.IO;
 using Inedo.Web;
 using Microsoft.Win32;
 
-namespace Inedo.Extensions.WindowsSdk.Operations.MSBuild
+namespace Inedo.Extensions.DotNet.Operations.MSBuild
 {
     [Serializable]
     [Tag(".net")]

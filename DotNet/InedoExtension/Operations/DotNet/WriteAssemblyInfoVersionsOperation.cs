@@ -13,7 +13,7 @@ using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.IO;
 
-namespace Inedo.Extensions.WindowsSdk.Operations.DotNet
+namespace Inedo.Extensions.DotNet.Operations.DotNet
 {
     [Tag(".net")]
     [DisplayName("Write Assembly Versions")]

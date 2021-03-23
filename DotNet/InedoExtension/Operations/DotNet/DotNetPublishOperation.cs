@@ -3,7 +3,7 @@ using System.Text;
 using Inedo.Documentation;
 using Inedo.Extensibility;
 
-namespace Inedo.Extensions.WindowsSdk.Operations.DotNet
+namespace Inedo.Extensions.DotNet.Operations.DotNet
 {
     [DisplayName("dotnet publish")]
     [ScriptAlias("Publish")]

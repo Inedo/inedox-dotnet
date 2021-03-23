@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>WindowsSdk</AssemblyName>
-    <RootNamespace>Inedo.Extensions.WindowsSdk</RootNamespace>
+    <AssemblyName>DotNet</AssemblyName>
+    <RootNamespace>Inedo.Extensions.DotNet</RootNamespace>
     <OutputType>Library</OutputType>
     <TargetFramework>net452</TargetFramework>
     <LangVersion>latest</LangVersion>

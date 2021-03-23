@@ -11,7 +11,7 @@ using Inedo.Extensibility.Agents;
 using Inedo.Extensibility.Operations;
 using Inedo.IO;
 
-namespace Inedo.Extensions.WindowsSdk.Operations
+namespace Inedo.Extensions.DotNet.Operations
 {
     [ScriptAlias("Sign-Exe")]
     [ScriptAlias("Sign-Dll")]
