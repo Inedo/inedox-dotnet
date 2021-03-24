@@ -13,8 +13,8 @@ namespace Inedo.Extensions.DotNet.SuggestionProviders
         {
             var result = SDK.GetPackageSources()
                 .Where(s => s.PackageType == AttachedPackageType.NuGet)
-                .OrderBy(s => s.Name)
-                .Select(s => s.Name);
+                .OrderBy(s => s.ResourceInfo.Name)
+                .Select(s => s.ResourceInfo.Name);
 
             return Task.FromResult(result);
         }

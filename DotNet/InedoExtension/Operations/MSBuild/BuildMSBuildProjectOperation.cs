@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Inedo.Agents;
@@ -222,26 +221,22 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
 
         private string FindMSBuildUsingRegistry()
         {
-            using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\MSBuild\ToolsVersions", false))
-            {
-                if (key == null)
-                    return null;
+            using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\MSBuild\ToolsVersions", false);
+            if (key == null)
+                return null;
 
-                var latestVersion = key
-                    .GetSubKeyNames()
-                    .Select(k => new { Key = k, Version = TryParse(k) })
-                    .Where(v => v.Version != null)
-                    .OrderByDescending(v => v.Version)
-                    .FirstOrDefault();
+            var latestVersion = key
+                .GetSubKeyNames()
+                .Select(k => new { Key = k, Version = TryParse(k) })
+                .Where(v => v.Version != null)
+                .OrderByDescending(v => v.Version)
+                .FirstOrDefault();
 
-                if (latestVersion == null)
-                    return null;
+            if (latestVersion == null)
+                return null;
 
-                using (var subkey = key.OpenSubKey(latestVersion.Key, false))
-                {
-                    return subkey.GetValue("MSBuildToolsPath") as string;
-                }
-            }
+            using var subkey = key.OpenSubKey(latestVersion.Key, false);
+            return subkey.GetValue("MSBuildToolsPath") as string;
         }
 
         protected override void LogProcessOutput(string text)
@@ -256,8 +251,7 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
 
         private static Version TryParse(string s)
         {
-            Version v;
-            Version.TryParse(s, out v);
+            _ = Version.TryParse(s, out Version v);
             return v;
         }
     }

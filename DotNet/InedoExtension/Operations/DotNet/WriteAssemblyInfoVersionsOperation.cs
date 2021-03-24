@@ -24,7 +24,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
     [SeeAlso(typeof(SetProjectVersionOperation))]
     public sealed class WriteAssemblyInfoVersionsOperation : ExecuteOperation
     {
-        internal static readonly LazyRegex AttributeRegex = new LazyRegex(@"(?<1>(System\.Reflection\.)?Assembly(?<2>File|Informational)?Version(Attribute)?\s*\(\s*"")[^""]*(?<3>""\s*\))", RegexOptions.Compiled | RegexOptions.ExplicitCapture);
+        internal static readonly LazyRegex AttributeRegex = new(@"(?<1>(System\.Reflection\.)?Assembly(?<2>File|Informational)?Version(Attribute)?\s*\(\s*"")[^""]*(?<3>""\s*\))", RegexOptions.Compiled | RegexOptions.ExplicitCapture);
         
         [ScriptAlias("AssemblyVersion")]
         [ScriptAlias("Version", Obsolete = true)]
@@ -102,11 +102,9 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                     if ((attr & FileAttributes.ReadOnly) != 0)
                         await fileOps.SetAttributesAsync(match.FullName, attr & ~FileAttributes.ReadOnly).ConfigureAwait(false);
 
-                    using (var stream = await fileOps.OpenFileAsync(match.FullName, FileMode.Create, FileAccess.Write).ConfigureAwait(false))
-                    using (var writer = new StreamWriter(stream, encoding))
-                    {
-                        await writer.WriteAsync(text).ConfigureAwait(false);
-                    }
+                    using var stream = await fileOps.OpenFileAsync(match.FullName, FileMode.Create, FileAccess.Write).ConfigureAwait(false);
+                    using var writer = new StreamWriter(stream, encoding);
+                    await writer.WriteAsync(text).ConfigureAwait(false);
                 }
             }
         }

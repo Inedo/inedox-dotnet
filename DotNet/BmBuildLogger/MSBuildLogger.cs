@@ -6,7 +6,7 @@ namespace Inedo.BmBuildLogger
 {
     public sealed class MSBuildLogger : ILogger
     {
-        private static readonly UTF8Encoding UTF8 = new UTF8Encoding(false);
+        private static readonly UTF8Encoding UTF8 = new(false);
 
         public string Parameters { get; set; }
         public LoggerVerbosity Verbosity { get; set; }

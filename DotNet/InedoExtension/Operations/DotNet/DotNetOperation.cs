@@ -21,7 +21,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
     [SeeAlso(typeof(SetProjectVersionOperation))]
     public abstract class DotNetOperation : ExecuteOperation
     {
-        private static readonly LazyRegex WarningRegex = new LazyRegex(@"\bwarning\b", RegexOptions.Compiled);
+        private static readonly LazyRegex WarningRegex = new(@"\bwarning\b", RegexOptions.Compiled);
 
         protected DotNetOperation()
         {
@@ -71,10 +71,11 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         public string AdditionalArguments { get; set; }
 
         [Category("Advanced")]
-        [ScriptAlias("DotNetExePath")]
-        [DefaultValue("$DotNetExePath")]
-        [DisplayName("dotnet.exe path")]
-        [Description("Full path of dotnet.exe. This is usually C:\\Program Files\\dotnet\\dotnet.exe. If no value is supplied, the operation will default to %PROGRAMFILES%\\dotnet\\dotnet.exe.")]
+        [ScriptAlias("DotNetPath")]
+        [ScriptAlias("DotNetExePath", Obsolete = true)]
+        [DisplayName("dotnet path")]
+        [PlaceholderText("default")]
+        [Description("Full path of dotnet.exe (or dotnet on Linux). This is usually C:\\Program Files\\dotnet\\dotnet.exe on Windows. If no value is supplied, the operation will default to %PROGRAMFILES%\\dotnet\\dotnet.exe for Windows and dotnet (from the path) on Linux.")]
         public string DotNetExePath { get; set; }
 
         protected abstract string CommandName { get; }
@@ -129,7 +130,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             if (!string.IsNullOrWhiteSpace(this.PackageSource))
             {
                 var source = SDK.GetPackageSources()
-                    .FirstOrDefault(s => string.Equals(s.Name, this.PackageSource, StringComparison.OrdinalIgnoreCase));
+                    .FirstOrDefault(s => string.Equals(s.ResourceInfo.Name, this.PackageSource, StringComparison.OrdinalIgnoreCase));
 
                 if (source == null)
                 {
@@ -211,19 +212,27 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 return this.DotNetExePath;
             }
 
-            var remote = await context.Agent.TryGetServiceAsync<IRemoteMethodExecuter>();
-            if (remote != null)
+            var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
+            if (fileOps.DirectorySeparator == '\\')
             {
-                var path = await remote.InvokeFuncAsync(GetDotNetExePathRemote);
-                if (!string.IsNullOrEmpty(path))
+                var remote = await context.Agent.TryGetServiceAsync<IRemoteMethodExecuter>();
+                if (remote != null)
                 {
-                    this.LogDebug("dotnet path: " + path);
-                    return path;
+                    var path = await remote.InvokeFuncAsync(GetDotNetExePathRemote);
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        this.LogDebug("dotnet path: " + path);
+                        return path;
+                    }
                 }
-            }
 
-            this.LogError("Could not determine the location of dotnet.exe on this server. To resolve this error, ensure that dotnet.exe is available on this server and retry the build, or create a server-scoped variabled named $DotNetExePath set to the location of dotnet.exe.");
-            return null;
+                this.LogError("Could not determine the location of dotnet.exe on this server. To resolve this error, ensure that dotnet.exe is available on this server and retry the build, or create a server-scoped variabled named $DotNetExePath set to the location of dotnet.exe.");
+                return null;
+            }
+            else
+            {
+                return "dotnet";
+            }
         }
 
         private static string GetDotNetExePathRemote()
