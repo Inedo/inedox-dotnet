@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using Inedo.Extensibility;
 
-[assembly: AssemblyTitle("Windows SDK")]
+[assembly: AssemblyTitle("DotNet")]
 [assembly: AssemblyDescription("Contains actions to build software using dotnet or msbuild.")]
 
 [assembly: ComVisible(false)]

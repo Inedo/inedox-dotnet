@@ -15,7 +15,7 @@ DotNet::Build ~\src\MyProject.csproj
     PackageSource: InternalNuGet
 );")]
     [SeeAlso(typeof(DotNetPublishOperation))]
-    public sealed class DotNetBuildOperation : DotNetOperation
+    public sealed class DotNetBuildOperation : DotNetBuildOrPublishOperation
     {
         protected override string CommandName => "build";
     }

@@ -1,11 +1,7 @@
-﻿using System;
-using System.ComponentModel;
-using System.Globalization;
+﻿using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Xml;
 using System.Xml.Linq;
 using Inedo.Agents;
 using Inedo.Diagnostics;
@@ -19,10 +15,9 @@ namespace Inedo.Extensions.DotNet.Operations
     [ScriptAlias("Execute-VSTest")]
     [DisplayName("Execute VSTest Tests")]
     [Description("Runs VSTest unit tests on a specified test project, recommended for tests in VS 2012 and later.")]
+    [ScriptNamespace("WindowsSDK")]
     public sealed class VSTestOperation : ExecuteOperation
     {
-        private static readonly LazyRegex DurationRegex = new(@"^(?<1>[0-9]+):(?<2>[0-9]+):(?<3>[0-9]+)(\.(?<4>[0-9]+))?$", RegexOptions.Compiled | RegexOptions.ExplicitCapture);
-
         [Required]
         [ScriptAlias("TestContainer")]
         [DisplayName("Test container")]
@@ -101,83 +96,7 @@ namespace Inedo.Extensions.DotNet.Operations
                 .Aggregate((latest, next) => next.LastWriteTimeUtc > latest.LastWriteTimeUtc ? next : latest)
                 .FullName;
 
-            XDocument doc;
-            using (var file = await fileOps.OpenFileAsync(trxPath, FileMode.Open, FileAccess.Read))
-            using (var reader = new XmlTextReader(file) { Namespaces = false })
-            {
-                doc = XDocument.Load(reader);
-            }
-
-            var testRecorder = await context.TryGetServiceAsync<IUnitTestRecorder>();
-
-            bool failures = false;
-
-            foreach (var result in doc.Element("TestRun").Element("Results").Elements("UnitTestResult"))
-            {
-                var testName = (string)result.Attribute("testName");
-                var outcome = (string)result.Attribute("outcome");
-                var output = result.Element("Output");
-                UnitTestStatus status;
-                string testResult;
-
-                if (string.Equals(outcome, "Passed", StringComparison.OrdinalIgnoreCase))
-                {
-                    status = UnitTestStatus.Passed;
-                    testResult = "Passed";
-                }
-                else if (string.Equals(outcome, "NotExecuted", StringComparison.OrdinalIgnoreCase))
-                {
-                    status = UnitTestStatus.Inconclusive;
-                    if (output == null)
-                        testResult = "Ignored";
-                    else
-                        testResult = GetResultTextFromOutput(output);
-                }
-                else
-                {
-                    status = UnitTestStatus.Failed;
-                    testResult = GetResultTextFromOutput(output);
-                    failures = true;
-                }
-
-                if (testRecorder != null)
-                {
-                    var startDate = (DateTimeOffset)result.Attribute("startTime");
-                    var duration = parseDuration((string)result.Attribute("duration"));
-                    await testRecorder.RecordUnitTestAsync(AH.CoalesceString(this.TestGroup, "Unit Tests"), testName, status, testResult, startDate, duration);
-                }
-            }
-
-            if (failures)
-                this.LogError("One or more unit tests failed.");
-            else
-                this.LogInformation("Tests completed with no failures.");
-
-            static TimeSpan parseDuration(string s)
-            {
-                if (!string.IsNullOrWhiteSpace(s))
-                {
-                    var m = DurationRegex.Match(s);
-                    if (m.Success)
-                    {
-                        int hours = int.Parse(m.Groups[1].Value);
-                        int minutes = int.Parse(m.Groups[2].Value);
-                        int seconds = int.Parse(m.Groups[3].Value);
-
-                        var timeSpan = new TimeSpan(hours, minutes, seconds);
-
-                        if (m.Groups[4].Success)
-                        {
-                            var fractionalSeconds = double.Parse("0." + m.Groups[4].Value, CultureInfo.InvariantCulture);
-                            timeSpan += TimeSpan.FromSeconds(fractionalSeconds);
-                        }
-
-                        return timeSpan;
-                    }
-                }
-
-                return TimeSpan.Zero;
-            }
+            await context.RecordUnitTestResultsAsync(trxPath, this.TestGroup);
         }
 
         protected override ExtendedRichDescription GetDescription(IOperationConfiguration config)
@@ -272,21 +191,6 @@ namespace Inedo.Extensions.DotNet.Operations
             );
 
             return vsWherePath;
-        }
-
-        private static string GetResultTextFromOutput(XElement output)
-        {
-            var message = string.Empty;
-            var errorInfo = output.Element("ErrorInfo");
-            if (errorInfo != null)
-            {
-                message = (string)errorInfo.Element("Message");
-                var trace = (string)errorInfo.Element("StackTrace");
-                if (!string.IsNullOrEmpty(trace))
-                    message += Environment.NewLine + trace;
-            }
-
-            return message;
         }
     }
 }

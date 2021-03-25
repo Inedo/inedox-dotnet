@@ -18,7 +18,7 @@ DotNet::Publish ~\src\MyProject.csproj
     PackageSource: InternalNuGet
 );")]
     [SeeAlso(typeof(DotNetBuildOperation))]
-    public sealed class DotNetPublishOperation : DotNetOperation
+    public sealed class DotNetPublishOperation : DotNetBuildOrPublishOperation
     {
         [ScriptAlias("SelfContained")]
         [DisplayName("Self-contained")]
