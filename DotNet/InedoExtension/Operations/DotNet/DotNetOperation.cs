@@ -12,7 +12,6 @@ using Inedo.Extensibility.Operations;
 namespace Inedo.Extensions.DotNet.Operations.DotNet
 {
     [Tag(".net")]
-    [Note("This operation requires .NET Core build tools v2.0+ to be installed on the server.")]
     public abstract class DotNetOperation : ExecuteOperation
     {
         private static readonly LazyRegex WarningRegex = new(@"\bwarning\b", RegexOptions.Compiled);
@@ -36,7 +35,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
         protected override void LogProcessOutput(string text) => this.Log(WarningRegex.IsMatch(text) ? MessageLevel.Warning : MessageLevel.Debug, text);
 
-        protected async Task<string> GetDotNetExePath(IOperationExecutionContext context)
+        protected async Task<string> GetDotNetExePath(IOperationExecutionContext context, bool logErrorIfNotFound = true)
         {
             if (!string.IsNullOrWhiteSpace(this.DotNetExePath))
             {
@@ -58,7 +57,9 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                     }
                 }
 
-                this.LogError("Could not determine the location of dotnet.exe on this server. To resolve this error, ensure that dotnet.exe is available on this server and retry the build, or create a server-scoped variabled named $DotNetExePath set to the location of dotnet.exe.");
+                if (logErrorIfNotFound)
+                    this.LogError("Could not determine the location of dotnet.exe on this server. To resolve this error, ensure that dotnet.exe is available on this server and retry the build, or create a server-scoped variabled named $DotNetExePath set to the location of dotnet.exe.");
+
                 return null;
             }
             else
