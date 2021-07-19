@@ -7,6 +7,7 @@ using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Extensibility.SecureResources;
 using Inedo.Extensions.SecureResources;
+using Inedo.Web;
 
 namespace Inedo.Extensions.DotNet.Operations.NuGet
 {
@@ -33,6 +34,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
         [Category("Advanced")]
         [ScriptAlias("SourceName")]
         [DisplayName("Package source")]
+        [SuggestableValue(typeof(SecureResourceSuggestionProvider<NuGetPackageSource>))]
         public string PackageSource { get; set; }
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
