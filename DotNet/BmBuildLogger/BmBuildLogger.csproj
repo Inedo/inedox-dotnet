@@ -2,17 +2,14 @@
   <PropertyGroup>
     <RootNamespace>Inedo.BmBuildLogger</RootNamespace>
     <OutputType>Library</OutputType>
-    <TargetFrameworks>net452;netstandard2.0</TargetFrameworks>
+    <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Title>BuildMaster Build Logger for MSBuild</Title>
     <Description>Contains an MSBuild logger for integration with BuildMaster.</Description>
     <Company>Inedo, LLC</Company>
-    <Copyright>Copyright © Inedo 2021</Copyright>
+    <Copyright>Copyright © Inedo 2022</Copyright>
   </PropertyGroup>
-  <ItemGroup Condition="'$(TargetFramework)' == 'net452'">
-    <Reference Include="Microsoft.Build.Framework" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+  <ItemGroup>
     <PackageReference Include="Microsoft.Build.Framework" Version="15.9.20" ExcludeAssets="runtime" />
   </ItemGroup>
 </Project>

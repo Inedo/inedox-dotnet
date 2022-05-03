@@ -11,7 +11,7 @@ namespace Inedo.Extensions.DotNet.SuggestionProviders
     {
         public Task<IEnumerable<string>> GetSuggestionsAsync(IComponentConfiguration config)
         {
-            var result = SDK.GetPackageSources()
+            var result = Util.GetPackageSources()
                 .Where(s => s.PackageType == AttachedPackageType.NuGet)
                 .OrderBy(s => s.ResourceInfo.Name)
                 .Select(s => s.ResourceInfo.Name);

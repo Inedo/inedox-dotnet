@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Inedo.Agents;
@@ -164,7 +165,8 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
 
             this.LogDebug("Could not find MSBuildToolsPath using vswhere.exe, falling back to registry...");
 
-            path = this.FindMSBuildUsingRegistry();
+            if (OperatingSystem.IsWindows())
+                path = FindMSBuildUsingRegistry();
 
             if (path != null)
             {
@@ -219,7 +221,8 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
             return Path.GetDirectoryName(filePath);
         }
 
-        private string FindMSBuildUsingRegistry()
+        [SupportedOSPlatform("windows")]
+        private static string FindMSBuildUsingRegistry()
         {
             using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\MSBuild\ToolsVersions", false);
             if (key == null)
@@ -243,7 +246,7 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
         {
             if (!string.IsNullOrWhiteSpace(text) && text.StartsWith("<BM>"))
             {
-                var bytes = Convert.FromBase64String(text.Substring("<BM>".Length));
+                var bytes = Convert.FromBase64String(text["<BM>".Length..]);
                 var message = InedoLib.UTF8Encoding.GetString(bytes, 1, bytes.Length - 1);
                 this.Log((MessageLevel)bytes[0], message);
             }

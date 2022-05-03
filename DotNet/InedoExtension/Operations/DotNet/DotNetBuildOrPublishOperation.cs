@@ -109,7 +109,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
             if (!string.IsNullOrWhiteSpace(this.PackageSource))
             {
-                var source = SDK.GetPackageSources()
+                var source = Util.GetPackageSources()
                     .FirstOrDefault(s => string.Equals(s.ResourceInfo.Name, this.PackageSource, StringComparison.OrdinalIgnoreCase));
 
                 if (source == null)

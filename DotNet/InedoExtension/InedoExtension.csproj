@@ -3,19 +3,16 @@
     <AssemblyName>DotNet</AssemblyName>
     <RootNamespace>Inedo.Extensions.DotNet</RootNamespace>
     <OutputType>Library</OutputType>
-    <TargetFrameworks>net452;net5.0</TargetFrameworks>
+    <TargetFramework>net6.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <NoWarn>CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Inedo.SDK" Version="1.11.0">
+    <PackageReference Include="Inedo.SDK" Version="2.0.0-ci.16">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <ProjectReference Include="..\BmBuildLogger\BmBuildLogger.csproj" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(TargetFramework)' == 'net5.0'">
     <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
+    <ProjectReference Include="..\BmBuildLogger\BmBuildLogger.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="vswhere.exe">
