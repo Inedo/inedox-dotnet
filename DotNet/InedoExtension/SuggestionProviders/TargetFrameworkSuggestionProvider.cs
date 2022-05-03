@@ -25,6 +25,7 @@ namespace Inedo.Extensions.DotNet.SuggestionProviders
             "netcoreapp2.2",
             "netcoreapp3.0",
             "netcoreapp3.1",
+            "net6.0",
             "net5.0",
             "net11",
             "net20",
