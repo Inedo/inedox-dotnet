@@ -38,7 +38,6 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         [Category("Advanced")]
         [ScriptAlias("Framework")]
         [SuggestableValue(typeof(TargetFrameworkSuggestionProvider))]
-        [Description("For building multiple target frameworks at once, leave this field blank and also leave \"Output\" blank.")]
         public string Framework { get; set; }
         [Category("Advanced")]
         [ScriptAlias("Runtime")]
@@ -46,7 +45,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         public string Runtime { get; set; }
         [Category("Advanced")]
         [ScriptAlias("Output")]
-        [Description("Specifies an output directory for the build. This is only valid if \"Framework\" is also specified.")]
+        [Description("Specifies an output directory for the build.")]
         public string Output { get; set; }
         [Category("Advanced")]
         [ScriptAlias("ForceDependencyResolution")]
@@ -94,9 +93,6 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
             if (!string.IsNullOrWhiteSpace(this.Output))
             {
-                if (string.IsNullOrWhiteSpace(this.Framework))
-                    this.LogWarning("\"Output\" is specified; set the \"Framework\" value also to prevent unexpected results.");
-
                 args.Append("--output ");
                 args.AppendArgument(context.ResolvePath(this.Output));
             }
