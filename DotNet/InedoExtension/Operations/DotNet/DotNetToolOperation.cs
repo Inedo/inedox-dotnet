@@ -97,7 +97,7 @@ DotNet::Tool dotnetsay
                     if (string.Equals(match.Version, this.Version, StringComparison.OrdinalIgnoreCase))
                     {
                         this.LogInformation($"{this.PackageId} v{match.Version} is already installed.");
-                        return;
+                        goto Run;
                     }
 
                     sb.Append("update");
@@ -124,6 +124,7 @@ DotNet::Tool dotnetsay
                 this.LogInformation("Tool installed.");
             }
 
+            Run:
             this.LogInformation($"Running dotnet command: {this.Command}");
             res = await this.ExecuteCommandLineAsync(
                 context,
