@@ -105,6 +105,27 @@ DotNet::Tool dotnetsay
 
                 this.AddIdAndVersionParameters(sb);
 
+                if (!string.IsNullOrWhiteSpace(this.PackageSource))
+                {
+                    var source = SDK.GetPackageSources()
+                        .FirstOrDefault(s => string.Equals(s.ResourceInfo.Name, this.PackageSource, StringComparison.OrdinalIgnoreCase));
+
+                    if (source == null)
+                    {
+                        this.LogError($"Package source \"{this.PackageSource}\" not found.");
+                        return;
+                    }
+
+                    if (source.PackageType != AttachedPackageType.NuGet)
+                    {
+                        this.LogError($"Package source \"{this.PackageSource}\" is a {source.PackageType} source; it must be a NuGet source for use with this operation.");
+                        return;
+                    }
+
+                    sb.Append("--source ");
+                    sb.AppendArgument(source.FeedUrl);
+                }
+
                 res = await this.ExecuteCommandLineAsync(
                     context,
                     new RemoteProcessStartInfo
