@@ -122,7 +122,7 @@ DotNet::Tool dotnetsay
                         return;
                     }
 
-                    sb.Append("--source ");
+                    sb.Append(" --add-source ");
                     sb.AppendArgument(source.FeedUrl);
                 }
 
