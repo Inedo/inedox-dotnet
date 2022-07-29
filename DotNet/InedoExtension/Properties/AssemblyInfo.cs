@@ -9,9 +9,9 @@ using Inedo.Extensibility;
 [assembly: ComVisible(false)]
 [assembly: AssemblyCompany("Inedo, LLC")]
 [assembly: AssemblyProduct("BuildMaster")]
-[assembly: AssemblyCopyright("Copyright © 2021")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyCopyright("Copyright © 2022")]
+[assembly: AssemblyVersion("2.0.0.0")]
+[assembly: AssemblyFileVersion("2.0.0.0")]
 [assembly: CLSCompliant(false)]
 
 [assembly: AppliesTo(InedoProduct.BuildMaster | InedoProduct.Otter)]
