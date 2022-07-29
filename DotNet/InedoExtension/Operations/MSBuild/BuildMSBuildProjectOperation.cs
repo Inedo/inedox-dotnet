@@ -209,6 +209,8 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
 
             var files = from f in xdoc.Root.Descendants("file")
                         let file = f.Value
+                        // unincluse arm for now
+                        where file.IndexOf("arm64", StringComparison.OrdinalIgnoreCase) < 0
                         // prefer 32-bit MSBuild
                         orderby file.IndexOf("amd64", StringComparison.OrdinalIgnoreCase) > -1 ? 1 : 0
                         select file;

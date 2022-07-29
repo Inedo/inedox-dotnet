@@ -97,13 +97,34 @@ DotNet::Tool dotnetsay
                     if (string.Equals(match.Version, this.Version, StringComparison.OrdinalIgnoreCase))
                     {
                         this.LogInformation($"{this.PackageId} v{match.Version} is already installed.");
-                        return;
+                        goto Run;
                     }
 
                     sb.Append("update");
                 }
 
                 this.AddIdAndVersionParameters(sb);
+
+                if (!string.IsNullOrWhiteSpace(this.PackageSource))
+                {
+                    var source = SDK.GetPackageSources()
+                        .FirstOrDefault(s => string.Equals(s.ResourceInfo.Name, this.PackageSource, StringComparison.OrdinalIgnoreCase));
+
+                    if (source == null)
+                    {
+                        this.LogError($"Package source \"{this.PackageSource}\" not found.");
+                        return;
+                    }
+
+                    if (source.PackageType != AttachedPackageType.NuGet)
+                    {
+                        this.LogError($"Package source \"{this.PackageSource}\" is a {source.PackageType} source; it must be a NuGet source for use with this operation.");
+                        return;
+                    }
+
+                    sb.Append(" --add-source ");
+                    sb.AppendArgument(source.FeedUrl);
+                }
 
                 res = await this.ExecuteCommandLineAsync(
                     context,
@@ -124,6 +145,7 @@ DotNet::Tool dotnetsay
                 this.LogInformation("Tool installed.");
             }
 
+            Run:
             this.LogInformation($"Running dotnet command: {this.Command}");
             res = await this.ExecuteCommandLineAsync(
                 context,
