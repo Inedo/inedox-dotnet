@@ -34,7 +34,6 @@ namespace Inedo.Extensions.DotNet.Operations
             using (var file = await fileOps.OpenFileAsync(trxFileName, FileMode.Open, FileAccess.Read))
             using (var reader = new XmlTextReader(file) { Namespaces = false })
             {
-                if (file.CanSeek) file.Position = 0;
                 doc = XDocument.Load(reader);
             }
 
