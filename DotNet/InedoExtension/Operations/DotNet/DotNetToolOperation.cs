@@ -10,6 +10,7 @@ using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Extensions.DotNet.SuggestionProviders;
+using Inedo.Extensions.PackageSources;
 using Inedo.IO;
 using Inedo.Web;
 
@@ -107,23 +108,20 @@ DotNet::Tool dotnetsay
 
                 if (!string.IsNullOrWhiteSpace(this.PackageSource))
                 {
-                    var source = Util.GetPackageSources()
-                        .FirstOrDefault(s => string.Equals(s.ResourceInfo.Name, this.PackageSource, StringComparison.OrdinalIgnoreCase));
-
+                    var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
                     if (source == null)
                     {
                         this.LogError($"Package source \"{this.PackageSource}\" not found.");
                         return;
                     }
-
-                    if (source.PackageType != AttachedPackageType.NuGet)
+                    if (source is not INuGetPackageSource nuuget)
                     {
-                        this.LogError($"Package source \"{this.PackageSource}\" is a {source.PackageType} source; it must be a NuGet source for use with this operation.");
+                        this.LogError($"Package source \"{this.PackageSource}\" is a {source.GetType().Name} source; it must be a NuGet source for use with this operation.");
                         return;
                     }
 
                     sb.Append(" --add-source ");
-                    sb.AppendArgument(source.FeedUrl);
+                    sb.AppendArgument(nuuget.SourceUrl);
                 }
 
                 res = await this.ExecuteCommandLineAsync(
