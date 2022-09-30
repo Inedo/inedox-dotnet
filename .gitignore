@@ -4,3 +4,4 @@ DotNet/*/obj/*
 *.suo
 *.user
 .vs
+/.config
