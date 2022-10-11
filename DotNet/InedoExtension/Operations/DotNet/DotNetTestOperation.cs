@@ -14,6 +14,7 @@ using Inedo.Web;
 namespace Inedo.Extensions.DotNet.Operations.DotNet
 {
     [ScriptAlias("Test")]
+    [ScriptNamespace("DotNet")]
     [DisplayName("dotnet test")]
     [Description("Runs unit tests on a specified test project using the dotnet test command.")]
     public sealed class DotNetTestOperation : DotNetOperation
