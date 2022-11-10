@@ -22,6 +22,7 @@ DotNet::Publish ~\src\MyProject.csproj
     {
         [ScriptAlias("SelfContained")]
         [DisplayName("Self-contained")]
+        [Category("Advanced")]
         public bool SelfContained { get; set; }
 
         protected override string CommandName => "publish";

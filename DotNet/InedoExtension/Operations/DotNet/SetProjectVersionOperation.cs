@@ -35,30 +35,33 @@ DotNet::SetProjectVersion
         [DisplayName("From directory")]
         [PlaceholderText("$WorkingDirectory")]
         public string SourceDirectory { get; set; }
-        [Required]
-        [ScriptAlias("Version")]
-        [DefaultValue("$ReleaseNumber")]
-        public string Version { get; set; } = "$ReleaseNumber";
-
-        [Category("Advanced")]
+        [Category("Project files")]
         [ScriptAlias("Include")]
         [MaskingDescription]
         [DefaultValue("**.csproj")]
+        [DisplayName("Project files to set")]
         public IEnumerable<string> Includes { get; set; }
-        [Category("Advanced")]
+        [ScriptAlias("Version")]
+        [DefaultValue("$ReleaseNumber")]
+        public string Version { get; set; }
+
+        [Undisclosed]
         [ScriptAlias("Exclude")]
         public IEnumerable<string> Excludes { get; set; }
-        [Category("Advanced")]
+        [Category("Additional versions")]
         [ScriptAlias("AssemblyVersion")]
         [DisplayName("Assembly version")]
+        [PlaceholderText("don't set AssemblyVersion")]
         public string AssemblyVersion { get; set; }
-        [Category("Advanced")]
+        [Category("Additional versions")]
         [ScriptAlias("FileVersion")]
         [DisplayName("File version")]
+        [PlaceholderText("don't set FileVersion")]
         public string FileVersion { get; set; }
-        [Category("Advanced")]
+        [Category("Additional versions")]
         [ScriptAlias("PackageVersion")]
         [DisplayName("Package version")]
+        [PlaceholderText("don't set PackageVersion")]
         public string PackageVersion { get; set; }
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
