@@ -71,7 +71,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                 this.LogError($"Package file {packagePath} not found.");
                 return;
             }
-
+            
             if (!string.IsNullOrEmpty(this.PackageSource))
                 this.ResolvePackageSource(context);
 
@@ -87,6 +87,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
 
             this.LogInformation($"Pushing package {packagePath}...");
 
+            int exitCode;
             if (nugetInfo.IsNuGetExe)
             {
                 var apiKeyArg = string.Empty;
@@ -97,13 +98,15 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                     apiKeyDisplayArg = "-ApiKey XXXXX ";
                 }
 
-                await this.ExecuteNuGetAsync(
+                exitCode = await this.ExecuteNuGetAsync(
                     context,
                     nugetInfo,
                     $"push \"{packagePath}\" {apiKeyArg}-Source \"{pushUrl}\" -NonInteractive",
                     null,
                     $"push \"{packagePath}\" {apiKeyDisplayArg}-Source \"{displayUrl}\" -NonInteractive"
                 );
+                if (exitCode != 0)
+                    this.LogError($"NuGet exited with code {exitCode}");
             }
             else
             {
@@ -111,19 +114,44 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                 var apiKeyDisplayArg = string.Empty;
                 if (!string.IsNullOrEmpty(this.ApiKey))
                 {
-                    apiKeyArg = $"--api-key \"{this.ApiKey}\" ";
-                    apiKeyDisplayArg = "--api-key XXXXX ";
+                    apiKeyArg = $" --api-key \"{this.ApiKey}\"";
+                    apiKeyDisplayArg = " --api-key XXXXX";
                 }
 
-                await this.ExecuteNuGetAsync(
+
+                bool packagePushedMessage = false;
+                bool pathNullMessage = false;
+                void PushNuGetPackageOperation_MessageLogged(object? sender, LogMessageEventArgs e)
+                {
+                    packagePushedMessage |= e.Message == "Your package was pushed.";
+                    pathNullMessage |= e.Message == "error: Value cannot be null. (Parameter 'path2')";
+                }
+                this.MessageLogged += PushNuGetPackageOperation_MessageLogged;
+                exitCode = await this.ExecuteNuGetAsync(
                     context,
                     nugetInfo,
-                    $"nuget push \"{packagePath}\" {apiKeyArg}\"{this.ApiKey}\" --source \"{pushUrl}\"",
+                    $"nuget push \"{packagePath}\" --source \"{pushUrl}\" {apiKeyArg}\"{this.ApiKey}\"",
                     null,
-                    $"nuget push \"{packagePath}\" {apiKeyDisplayArg}--source \"{displayUrl}\""
+                    $"nuget push \"{packagePath}\" --source \"{displayUrl}\" {apiKeyDisplayArg}"
                 );
+                this.MessageLogged -= PushNuGetPackageOperation_MessageLogged;
+                if (exitCode != 0)
+                {
+                    if (packagePushedMessage && pathNullMessage)
+                    {
+                        this.LogInformation(
+                            $"Although NuGet exited with error code {exitCode} and logged an error, it also reported that the package was successfully pushed. " +
+                            $"This seems to be the known NuGet bug, (https://github.com/NuGet/Home/issues/10645), so the error is being ignored.");
+                        exitCode = 0;
+                    }
+                    else
+                        this.LogError($"NuGet exited with code {exitCode}");
+                }
+                    
+
             }
         }
+
 
         protected override ExtendedRichDescription GetDescription(IOperationConfiguration config)
         {

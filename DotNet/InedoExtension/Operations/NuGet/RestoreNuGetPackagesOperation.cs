@@ -90,7 +90,10 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                     buffer.Append($" --source \"{this.PackageSource}\"");
             }
 
-            await this.ExecuteNuGetAsync(context, nugetInfo, buffer.ToString(), null);
+            var exitCode = await this.ExecuteNuGetAsync(context, nugetInfo, buffer.ToString(), null); 
+            if (exitCode != 0)
+                this.LogError($"NuGet exited with code {exitCode}");
+            
             this.LogInformation("Done restoring packages.");
         }
 

@@ -46,7 +46,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
 
             return new ToolInfo(dotNetPath, false);
         }
-        protected async Task ExecuteNuGetAsync(IOperationExecutionContext context, ToolInfo toolInfo, string args, string workingDirectory, string logArgs = null)
+        protected async Task<int> ExecuteNuGetAsync(IOperationExecutionContext context, ToolInfo toolInfo, string args, string workingDirectory, string logArgs = null)
         {
             if (!string.IsNullOrWhiteSpace(this.AdditionalArguments))
             {
@@ -67,8 +67,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                 }
             ).ConfigureAwait(false);
 
-            if (exitCode != 0)
-                this.LogError($"NuGet exited with code {exitCode}");
+            return exitCode;
         }
         protected static string TrimDirectorySeparator(string d)
         {
