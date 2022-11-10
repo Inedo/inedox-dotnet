@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel;
 using System.Text;
-using System.Threading.Tasks;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
@@ -17,7 +16,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
     [ScriptNamespace("DotNet")]
     [Description("Creates a NuGet package from a .net project using the dotnet pack command.")]
     [SeeAlso(typeof(NuGet.CreateNuGetPackageOperation), Comments = "The NuGet::Create-Package operation works only on Windows, but can also build a package from a .nuspec file.")]
-    [Note("This operation work on Windows and Linux as long as dotnet is installed.")]
+    [Note("This operation works on Windows and Linux as long as dotnet is installed.")]
     public sealed class DotNetPackOperation : DotNetOperation
     {
         [Required]
