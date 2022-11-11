@@ -37,6 +37,10 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         public string PackageSource { get; set; }
 
         [Category("Advanced")]
+        [ScriptAlias("Version")]
+        [PlaceholderText("not set")]
+        public string Version { get; set; }
+        [Category("Advanced")]
         [ScriptAlias("Framework")]
         [SuggestableValue(typeof(TargetFrameworkSuggestionProvider))]
         public string Framework { get; set; }
@@ -71,39 +75,20 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             var args = new StringBuilder($"{this.CommandName} ");
             args.AppendArgument(projectPath);
 
-            if (!string.IsNullOrWhiteSpace(this.Configuration))
-            {
-                args.Append("--configuration ");
-                args.AppendArgument(this.Configuration);
-            }
-
-            if (!string.IsNullOrWhiteSpace(this.Framework))
-            {
-                args.Append("--framework ");
-                args.AppendArgument(this.Framework);
-            }
-
-            if (!string.IsNullOrWhiteSpace(this.Runtime))
-            {
-                args.Append("--runtime ");
-                args.AppendArgument(this.Runtime);
-            }
+            maybeAppend("--configuration ", this.Configuration);
+            maybeAppend("--framework ", this.Framework);
+            maybeAppend("--runtime ", this.Runtime);
+            maybeAppend("--output ", this.Output);
+            maybeAppend("-p:Version=", this.Version);
 
             if (this.Force)
                 args.Append("--force ");
-
-            if (!string.IsNullOrWhiteSpace(this.Output))
-            {
-                args.Append("--output ");
-                args.AppendArgument(context.ResolvePath(this.Output));
-            }
 
             if (this.Verbosity != DotNetVerbosityLevel.Minimal)
             {
                 args.Append("--verbosity ");
                 args.AppendArgument(this.Verbosity.ToString().ToLowerInvariant());
             }
-
             if (!string.IsNullOrWhiteSpace(this.PackageSource))
             {
                 var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
@@ -145,6 +130,14 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             );
 
             this.Log(res == 0 ? MessageLevel.Debug : MessageLevel.Error, "dotnet exit code: " + res);
+
+            void maybeAppend(string arg, string maybeValue)
+            {
+                if (string.IsNullOrWhiteSpace(maybeValue))
+                    return;
+                args.Append(arg);
+                args.AppendArgument(maybeValue);
+            }
         }
 
         protected virtual void AppendAdditionalArguments(StringBuilder args)

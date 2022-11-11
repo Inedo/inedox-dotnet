@@ -6,6 +6,7 @@ using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Extensions.DotNet.SuggestionProviders;
+using Inedo.Extensions.PackageSources;
 using Inedo.Web;
 
 namespace Inedo.Extensions.DotNet.Operations.DotNet
@@ -19,37 +20,55 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
     [Note("This operation works on Windows and Linux as long as dotnet is installed.")]
     public sealed class DotNetPackOperation : DotNetOperation
     {
-        [Required]
         [ScriptAlias("Project")]
         [DisplayName("Project path")]
         [Description("This must be the path to either a project file, solution file, or a directory containing a project or solution file.")]
         public string ProjectPath { get; set; }
-
-        [Category("Advanced")]
-        [ScriptAlias("Output")]
-        [Description("Specifies an output directory for the build. This is only valid if \"Framework\" is also specified.")]
-        public string Output { get; set; }
-
         [ScriptAlias("Configuration")]
         [SuggestableValue(typeof(BuildConfigurationSuggestionProvider))]
         public string Configuration { get; set; }
+        [ScriptAlias("PackageSource")]
+        [DisplayName("Package source")]
+        [SuggestableValue(typeof(NuGetPackageSourceSuggestionProvider))]
+        [Description("If specified, this NuGet package source will be used to restore packages when building.")]
+        public string PackageSource { get; set; }
+        [ScriptAlias("Output")]
+        [DisplayName("Output directory")]
+        [Description("The output directory to place built packages in.")]
+        public string Output { get; set; }
 
+        [Category("Package options")]
+        [ScriptAlias("PackageID")]
+        [DisplayName("Package ID")]
+        [PlaceholderText("not set")]
+        public string PackageID { get; set; }
+        [Category("Package options")]
+        [ScriptAlias("PackageVersion")]
+        [DisplayName("Package Version")]
+        [PlaceholderText("not set")]
+        public string PackageVersion { get; set; }
+        [Category("Package options")]
+        [ScriptAlias("VersionSuffix")]
+        [DisplayName("Version suffix")]
+        [PlaceholderText("not set (ignored if Package Version is set)")]
+        public string VersionSuffix { get; set; }
+        [Category("Package options")]
         [ScriptAlias("IncludeSymbols")]
         [DisplayName("Include symbols")]
         public bool IncludeSymbols { get; set; }
+        [Category("Package options")]
         [ScriptAlias("IncludeSource")]
         [DisplayName("Include source")]
         public bool IncludeSource { get; set; }
 
         [Category("Advanced")]
-        [ScriptAlias("ForceDependencyResolution")]
-        [DisplayName("Force dependency resolution")]
-        [PlaceholderText("false")]
-        public bool Force { get; set; }
-        [Category("Advanced")]
         [ScriptAlias("Verbosity")]
         [DefaultValue(DotNetVerbosityLevel.Minimal)]
         public DotNetVerbosityLevel Verbosity { get; set; } = DotNetVerbosityLevel.Minimal;
+
+        [ScriptAlias("ForceDependencyResolution")]
+        [Undisclosed]
+        public bool Force { get; set; }
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
         {
@@ -62,25 +81,50 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             var args = new StringBuilder("pack ");
             args.AppendArgument(projectPath);
 
-            if (!string.IsNullOrWhiteSpace(this.Configuration))
+            void maybeAppend(string arg, string maybeValue)
             {
-                args.Append("--configuration ");
-                args.AppendArgument(this.Configuration);
+                if (string.IsNullOrWhiteSpace(maybeValue))
+                    return;
+                args.Append(arg);
+                args.AppendArgument(maybeValue);
             }
 
-            if (this.Force)
-                args.Append("--force ");
+            maybeAppend("--configuration ", this.Configuration);
+            maybeAppend("--output ", this.Output);
 
-            if (!string.IsNullOrWhiteSpace(this.Output))
-            {
-                args.Append("--output ");
-                args.AppendArgument(context.ResolvePath(this.Output));
-            }
+            maybeAppend("-p:PackageID=", this.PackageID);
+            maybeAppend("-p:PackageVersion=", this.PackageVersion);
+            maybeAppend("--version-suffix ", this.VersionSuffix);
+            if (this.IncludeSymbols)
+                args.Append("--include-symbols");
+            if (this.IncludeSource)
+                args.Append("--include-source");
+
 
             if (this.Verbosity != DotNetVerbosityLevel.Minimal)
             {
                 args.Append("--verbosity ");
                 args.AppendArgument(this.Verbosity.ToString().ToLowerInvariant());
+            }
+            if (this.Force)
+                args.Append("--force ");
+
+            if (!string.IsNullOrWhiteSpace(this.PackageSource))
+            {
+                var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
+                if (source == null)
+                {
+                    this.LogError($"Package source \"{this.PackageSource}\" not found.");
+                    return;
+                }
+                if (source is not INuGetPackageSource nuuget)
+                {
+                    this.LogError($"Package source \"{this.PackageSource}\" is a {source.GetType().Name} source; it must be a NuGet source for use with this operation.");
+                    return;
+                }
+
+                args.Append("--source ");
+                args.AppendArgument(nuuget.SourceUrl);
             }
 
             if (!string.IsNullOrWhiteSpace(this.AdditionalArguments))
