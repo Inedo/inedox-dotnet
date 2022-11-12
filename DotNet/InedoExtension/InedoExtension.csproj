@@ -9,6 +9,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <None Remove="VSTargets.zip" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Inedo.SDK" Version="2.2.0-ci.69">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
@@ -18,6 +21,9 @@
     <ProjectReference Include="..\BmBuildLogger\BmBuildLogger.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="VSTargets.zip">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="vswhere.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

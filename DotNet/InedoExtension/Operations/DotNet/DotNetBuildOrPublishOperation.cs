@@ -2,6 +2,7 @@
 using System.ComponentModel;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Inedo.Agents;
 using Inedo.Diagnostics;
@@ -53,6 +54,15 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         [Description("Specifies an output directory for the build.")]
         public string Output { get; set; }
         [Category("Advanced")]
+        [ScriptAlias("VSToolsPath")]
+        [PlaceholderText("not set")]
+        [Description(
+            "Some older .NET applications (especially Framework) may require MSBuild targets included with Visual Studio. Use " +
+            "\"embedded\" to try resolving these without Visual Studio, \"search\" to try to find the targets using the Registry, " +
+            "or enter a path like " + @"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VisualStudio\v17.0")]
+        [SuggestableValue("embedded", "search")]
+        public string VSToolsPath { get; set; }
+        [Category("Advanced")]
         [ScriptAlias("ForceDependencyResolution")]
         [DisplayName("Force dependency resolution")]
         [PlaceholderText("false")]
@@ -80,6 +90,32 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             maybeAppend("--runtime ", this.Runtime);
             maybeAppend("--output ", this.Output);
             maybeAppend("-p:Version=", this.Version);
+
+#warning Implement VSToolsPath
+            if (!string.IsNullOrEmpty(this.VSToolsPath))
+            {
+                string vsToolsPathArg;
+                if (this.VSToolsPath == "embedded")
+                {
+                    // extract VSTargets.zip to a directory if not already done (ExtTmp??)
+                    // vSToolsPath = that directory
+                    vsToolsPathArg = null;
+                }
+                else if (this.VSToolsPath == "search")
+                {
+                    this.LogDebug("VSToolsPath is set to \"search\", so using vswhere.exe to search...");
+                    // use vswhere to try finding this path
+                    vsToolsPathArg = @"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VisualStudio\v17.0";
+                    if (vsToolsPathArg == null)
+                        this.LogWarning("VSToolsPath is set to \"search\", but a location could not be found.");
+                    else
+                        this.LogDebug("Found path: " + vsToolsPathArg);
+                }
+                else
+                    vsToolsPathArg = this.VSToolsPath;
+
+                maybeAppend("-p:VSToolsPath=", vsToolsPathArg);
+            }
 
             if (this.Force)
                 args.Append("--force ");
@@ -119,6 +155,9 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             var fullArgs = args.ToString();
             this.LogDebug($"Executing dotnet {fullArgs}...");
 
+            bool errNothingToDo = false, errMsWebAppTargets = false, errMSB4062_tasks = false;
+
+            this.MessageLogged += DotNetBuildOrPublishOperation_MessageLogged;
             int res = await this.ExecuteCommandLineAsync(
                 context,
                 new RemoteProcessStartInfo
@@ -128,9 +167,56 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                     WorkingDirectory = context.WorkingDirectory
                 }
             );
+            this.MessageLogged -= DotNetBuildOrPublishOperation_MessageLogged;
 
-            this.Log(res == 0 ? MessageLevel.Debug : MessageLevel.Error, "dotnet exit code: " + res);
+            if (res == 0)
+                this.LogDebug("dotnet exited successfully (exitcode=0)");
+            
+            else
+            {
+                this.LogError($"dotnet did not exit successfully (exitcode={res}).");
+                if (errNothingToDo && !string.IsNullOrEmpty(this.PackageSource))
+                    this.LogInformation(
+                        $"[TIP] It doesn't look like any NuGet packages were restored during the build process. " +
+                        $"This usually means that the Package Source specified ({this.PackageSource}) " +
+                        "does not contain the required packages, which may lead this build error.");
 
+                if (errMsWebAppTargets && string.IsNullOrEmpty(this.VSToolsPath))
+                    this.LogInformation(
+                        $"[TIP] It looks like this project requires MSBuild targets that typically part of Visual Studio. " +
+                        $"To resolve this, set the \"VSToolsPath\" to \"embedded\", which will instruct MSBuild to try to use the " +
+                        $"common MSBuild targets that we've included in BuildMaster.");
+
+                else if (errMSB4062_tasks || errMsWebAppTargets)
+                {
+                    if (this.VSToolsPath == "embedded")
+                        this.LogInformation(
+                            $"[TIP] Unfortunately, it looks like \"embedded\" didn't work as the VSToolsPath. " +
+                            $"If Visual Studio is installed on this server, try using \"search\" or entering the location (e.g. " 
+                            + @"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VisualStudio\v17.0" +
+                            ") and then Devenv::Build (which uses Visual Studio). " +
+                            "If Visual Studio is not installed, try using the MSBuild::Build-Project operation first.");
+                    else
+                        this.LogInformation(
+                            $"[TIP] Unfortunately, it looks like dotnet still isn't able to resolve the targets specified in VSToolsPath. " +
+                            $"Try switching to the MSBuild::Build-Project or Devenv::Build operation instead.");
+
+                }
+            }
+
+
+            void DotNetBuildOrPublishOperation_MessageLogged(object sender, LogMessageEventArgs e)
+            {
+                if (!errNothingToDo && e.Message.Contains("Nothing to do. None of the projects specified contain packages to restore."))
+                    errNothingToDo = true;
+
+                if (!errMsWebAppTargets && Regex.IsMatch(e.Message, @"(error MSB4019: The imported project)(.*)(Web(Applications)?\\Microsoft\.)(.*)(\.targets)"))
+                    errMsWebAppTargets = true;
+
+                if (!errMSB4062_tasks && e.Message.Contains("error MSB4062"))
+                    errMSB4062_tasks = true;
+
+            }
             void maybeAppend(string arg, string maybeValue)
             {
                 if (string.IsNullOrWhiteSpace(maybeValue))
