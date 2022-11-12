@@ -157,7 +157,8 @@ DotNet::SetProjectVersion
 
         private static void UpdateOrAdd(XDocument xdoc, string name, string value)
         {
-            var element = (from g in xdoc.Root.Elements("PropertyGroup")
+            var element = (from g in xdoc.Root.Elements()
+                           where g.Name.LocalName == "PropertyGroup"
                            from p in g.Elements()
                            where p.Name.LocalName == name
                            select p).FirstOrDefault();
@@ -168,14 +169,18 @@ DotNet::SetProjectVersion
             }
             else
             {
-                var group = xdoc.Root.Element("PropertyGroup");
+                var group = (from g in xdoc.Root.Elements()
+                             where g.Name.LocalName == "PropertyGroup"
+                             select g).FirstOrDefault();
                 if (group == null)
                 {
-                    group = new XElement("PropertyGroup");
+                    var ns = xdoc.Root.GetDefaultNamespace();
+                    group = new XElement(ns.GetName("PropertyGroup"));
                     xdoc.Root.Add(group);
                 }
 
-                group.Add(new XElement(name, value));
+                var xname = group.GetDefaultNamespace().GetName(name);
+                group.Add(new XElement(xname, value));
             }
         }
     }
