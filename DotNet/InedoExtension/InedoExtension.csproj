@@ -21,12 +21,12 @@
     <ProjectReference Include="..\BmBuildLogger\BmBuildLogger.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="VSTargets.zip">
+    <EmbeddedResource Include="VSTargets.zip">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="vswhere.exe">
+    </EmbeddedResource>
+    <EmbeddedResource Include="vswhere.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    </EmbeddedResource>
     <Content Include="nuget.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
