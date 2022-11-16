@@ -130,7 +130,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                 exitCode = await this.ExecuteNuGetAsync(
                     context,
                     nugetInfo,
-                    $"nuget push \"{packagePath}\" --source \"{pushUrl}\" {apiKeyArg}\"{this.ApiKey}\"",
+                    $"nuget push \"{packagePath}\" --source \"{pushUrl}\" {apiKeyArg}",
                     null,
                     $"nuget push \"{packagePath}\" --source \"{displayUrl}\" {apiKeyDisplayArg}"
                 );
