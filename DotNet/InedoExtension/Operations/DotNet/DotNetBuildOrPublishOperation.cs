@@ -84,11 +84,32 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             var args = new StringBuilder($"{this.CommandName} ");
             args.AppendArgument(projectPath);
 
-            maybeAppend("--configuration ", this.Configuration);
-            maybeAppend("--framework ", this.Framework);
-            maybeAppend("--runtime ", this.Runtime);
-            maybeAppend("--output ", this.Output);
-            maybeAppend("-p:Version=", this.Version);
+            if (!string.IsNullOrWhiteSpace(this.Configuration))
+            {
+                args.Append("--configuration ");
+                args.AppendArgument(this.Configuration);
+            }
+
+            if (!string.IsNullOrWhiteSpace(this.Framework))
+            {
+                args.Append("--framework ");
+                args.AppendArgument(this.Framework);
+            }
+
+            if (!string.IsNullOrWhiteSpace(this.Runtime))
+            {
+                args.Append("--runtime ");
+                args.AppendArgument(this.Runtime);
+            }
+
+            if (!string.IsNullOrWhiteSpace(this.Output))
+            {
+                args.Append("--output ");
+                args.AppendArgument(context.ResolvePath(this.Output));
+            }
+
+            if (!string.IsNullOrWhiteSpace(this.Version))
+                args.AppendArgument($"-p:Version={this.Version}");
 
             var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
 
@@ -123,7 +144,8 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                     vsToolsPathArg = this.VSToolsPath;
                 }
 
-                maybeAppend("-p:VSToolsPath=", vsToolsPathArg);
+                if (!string.IsNullOrWhiteSpace(vsToolsPathArg))
+                    args.AppendArgument("-p:VSToolsPath={vsToolsPathArg}");
             }
 
             if (this.Force)
@@ -134,6 +156,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 args.Append("--verbosity ");
                 args.AppendArgument(this.Verbosity.ToString().ToLowerInvariant());
             }
+
             if (!string.IsNullOrWhiteSpace(this.PackageSource))
             {
                 var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
@@ -229,15 +252,6 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
                 if (!errMSB4062_tasks && e.Message.Contains("error MSB4062"))
                     errMSB4062_tasks = true;
-            }
-
-            void maybeAppend(string arg, string maybeValue)
-            {
-                if (!string.IsNullOrWhiteSpace(maybeValue))
-                {
-                    args.Append(arg);
-                    args.AppendArgument(maybeValue);
-                }
             }
         }
 
