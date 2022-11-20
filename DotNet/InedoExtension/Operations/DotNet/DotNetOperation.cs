@@ -58,7 +58,13 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 }
 
                 if (logErrorIfNotFound)
-                    this.LogError("Could not determine the location of dotnet.exe on this server. To resolve this error, ensure that dotnet.exe is available on this server and retry the build, or create a server-scoped variabled named $DotNetExePath set to the location of dotnet.exe.");
+                {
+                    this.LogError("Could find dotnet.exe on this server.");
+                    this.LogInformation(
+                        $"[TIP] This error usually means that the .NET SDK is not installed on this server. Try downloading/installing .NET SDK " +
+                        $"on this server, and retry the build. If .NET is installed, then you can create a server-scoped variable named $DotNetExePath " +
+                        $"to set the location of dotnet.exe.");
+                }
 
                 return null;
             }
