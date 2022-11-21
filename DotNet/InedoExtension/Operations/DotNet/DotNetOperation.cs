@@ -1,13 +1,11 @@
-﻿using System;
-using System.ComponentModel;
-using System.IO;
+﻿using System.ComponentModel;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
+using Inedo.IO;
 
 namespace Inedo.Extensions.DotNet.Operations.DotNet
 {
@@ -39,48 +37,78 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         {
             if (!string.IsNullOrWhiteSpace(this.DotNetExePath))
             {
-                this.LogDebug("dotnet path: " + this.DotNetExePath);
+                this.LogDebug($"dotnet path: {this.DotNetExePath}");
                 return this.DotNetExePath;
             }
 
-            var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
-            if (fileOps.DirectorySeparator == '\\')
+            await foreach (var path in GetPossibleDotNetPathsAsync(context))
             {
-                var remote = await context.Agent.TryGetServiceAsync<IRemoteMethodExecuter>();
-                if (remote != null)
-                {
-                    var path = await remote.InvokeFuncAsync(GetDotNetExePathRemote);
-                    if (!string.IsNullOrEmpty(path))
-                    {
-                        this.LogDebug("dotnet path: " + path);
-                        return path;
-                    }
-                }
-
-                if (logErrorIfNotFound)
-                {
-                    this.LogError("Could find dotnet.exe on this server.");
-                    this.LogInformation(
-                        $"[TIP] This error usually means that the .NET SDK is not installed on this server. Try downloading/installing .NET SDK " +
-                        $"on this server, and retry the build. If .NET is installed, then you can create a server-scoped variable named $DotNetExePath " +
-                        $"to set the location of dotnet.exe.");
-                }
-
-                return null;
+                this.LogDebug($"dotnet path: {path}");
+                return path;
             }
-            else
+
+            if (logErrorIfNotFound)
             {
-                return "dotnet";
+                this.LogError("Could find dotnet.exe on this server.");
+                this.LogInformation(
+                    "[TIP] This error usually means that the .NET SDK is not installed on this server. Try downloading/installing .NET SDK " +
+                    "on this server, and retry the build. If .NET is installed, then you can create a server-scoped variable named $DotNetExePath " +
+                    "to set the location of dotnet.exe (or dotnet on Linux)."
+                );
             }
+
+            return null;
         }
 
-        private static string GetDotNetExePathRemote()
+        private static async IAsyncEnumerable<string> GetPossibleDotNetPathsAsync(IOperationExecutionContext context)
         {
-            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet", "dotnet.exe");
-            if (File.Exists(path))
-                return path;
+            var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
+            var remoteProcess = await context.Agent.GetServiceAsync<IRemoteProcessExecuter>();
+
+            if (fileOps.DirectorySeparator == '\\')
+            {
+                var localAppDataDir = await remoteProcess.GetEnvironmentVariableValueAsync("LocalAppData");
+                if (!string.IsNullOrWhiteSpace(localAppDataDir))
+                {
+                    var path = fileOps.CombinePath(localAppDataDir, "Microsoft", "dotnet", "dotnet.exe");
+                    if (await fileOps.FileExistsAsync(path))
+                        yield return path;
+                }
+
+                var programFilesDir = await remoteProcess.GetEnvironmentVariableValueAsync("ProgramFiles");
+                if (!string.IsNullOrWhiteSpace(programFilesDir))
+                {
+                    var path = fileOps.CombinePath(localAppDataDir, "dotnet", "dotnet.exe");
+                    if (await fileOps.FileExistsAsync(path))
+                        yield return path;
+                }
+            }
             else
-                return null;
+            {
+                var homeDir = await remoteProcess.GetEnvironmentVariableValueAsync("HOME");
+                if (!string.IsNullOrWhiteSpace(homeDir))
+                {
+                    var path = fileOps.CombinePath(homeDir, ".dotnet", "dotnet");
+                    if (await fileOps.FileExistsAsync(path))
+                        yield return path;
+                }
+            }
+
+            var pathDirs = await remoteProcess.GetEnvironmentVariableValueAsync("PATH");
+            if (!string.IsNullOrWhiteSpace(pathDirs))
+            {
+                var binaryName = fileOps.DirectorySeparator == '\\' ? "dotnet.exe" : "dotnet";
+                foreach (var p in pathDirs.Split(';', StringSplitOptions.TrimEntries))
+                {
+                    var name = PathEx.GetFileName(p);
+                    if (name is "dotnet" or ".dotnet")
+                    {
+                        var path = fileOps.CombinePath(p, binaryName);
+                        if (await fileOps.FileExistsAsync(path))
+                            yield return path;
+                    }
+                }
+            }
         }
     }
 }
