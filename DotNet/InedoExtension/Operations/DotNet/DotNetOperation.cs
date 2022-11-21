@@ -1,4 +1,6 @@
 ﻿using System.ComponentModel;
+using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Inedo.Agents;
 using Inedo.Diagnostics;
@@ -37,9 +39,11 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         {
             if (!string.IsNullOrWhiteSpace(this.DotNetExePath))
             {
-                this.LogDebug($"dotnet path: {this.DotNetExePath}");
+                this.LogDebug($"dotnet path specified as: {this.DotNetExePath}");
                 return this.DotNetExePath;
             }
+
+            this.LogDebug("$DotNetExePath is not specified; attempting to find dotnet...");
 
             await foreach (var path in GetPossibleDotNetPathsAsync(context))
             {
@@ -60,7 +64,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             return null;
         }
 
-        private static async IAsyncEnumerable<string> GetPossibleDotNetPathsAsync(IOperationExecutionContext context)
+        private async IAsyncEnumerable<string> GetPossibleDotNetPathsAsync(IOperationExecutionContext context)
         {
             var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
             var remoteProcess = await context.Agent.GetServiceAsync<IRemoteProcessExecuter>();
@@ -71,6 +75,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 if (!string.IsNullOrWhiteSpace(localAppDataDir))
                 {
                     var path = fileOps.CombinePath(localAppDataDir, "Microsoft", "dotnet", "dotnet.exe");
+                    this.LogDebug($"Searching for dotnet at {path}...");
                     if (await fileOps.FileExistsAsync(path))
                         yield return path;
                 }
@@ -79,6 +84,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 if (!string.IsNullOrWhiteSpace(programFilesDir))
                 {
                     var path = fileOps.CombinePath(localAppDataDir, "dotnet", "dotnet.exe");
+                    this.LogDebug($"Searching for dotnet at {path}...");
                     if (await fileOps.FileExistsAsync(path))
                         yield return path;
                 }
@@ -89,11 +95,13 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 if (!string.IsNullOrWhiteSpace(homeDir))
                 {
                     var path = fileOps.CombinePath(homeDir, ".dotnet", "dotnet");
+                    this.LogDebug($"Searching for dotnet at {path}...");
                     if (await fileOps.FileExistsAsync(path))
                         yield return path;
                 }
             }
 
+            this.LogDebug("Searching for dotnet in Path environment variable...");
             var pathDirs = await remoteProcess.GetEnvironmentVariableValueAsync("PATH");
             if (!string.IsNullOrWhiteSpace(pathDirs))
             {
