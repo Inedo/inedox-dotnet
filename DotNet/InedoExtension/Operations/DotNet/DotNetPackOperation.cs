@@ -72,11 +72,11 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
         {
-            var dotNetPath = await this.GetDotNetExePath(context);
+            var projectPath = context.ResolvePath(this.ProjectPath);
+
+            var dotNetPath = await this.GetDotNetExePath(context, projectPath);
             if (string.IsNullOrEmpty(dotNetPath))
                 return;
-
-            var projectPath = context.ResolvePath(this.ProjectPath);
 
             var args = new StringBuilder("pack ");
             args.AppendArgument(projectPath);

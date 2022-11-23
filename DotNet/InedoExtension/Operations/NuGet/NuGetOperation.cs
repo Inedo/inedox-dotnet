@@ -30,7 +30,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
 
         protected async Task<ToolInfo> GetNuGetInfoAsync(IOperationExecutionContext context)
         {
-            var dotNetPath = await this.GetDotNetExePath(context, false);
+            var dotNetPath = await this.GetDotNetExePath(context, context.WorkingDirectory, false);
 
             // nuget.exe can only be used on windows
             if (await context.Agent.TryGetServiceAsync<ILinuxFileOperationsExecuter>() == null)

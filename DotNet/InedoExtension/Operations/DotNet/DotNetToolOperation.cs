@@ -1,15 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
+﻿using System.ComponentModel;
 using System.Text;
-using System.Threading.Tasks;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
-using Inedo.Extensions.DotNet.SuggestionProviders;
 using Inedo.Extensions.PackageSources;
 using Inedo.IO;
 using Inedo.Web;
@@ -54,7 +49,7 @@ DotNet::Tool dotnetsay
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
         {
-            var dotNetPath = await this.GetDotNetExePath(context);
+            var dotNetPath = await this.GetDotNetExePath(context, context.WorkingDirectory);
             if (string.IsNullOrEmpty(dotNetPath))
                 return;
 

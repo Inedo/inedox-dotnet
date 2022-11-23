@@ -1,13 +1,16 @@
 ﻿using System.ComponentModel;
-using System.IO;
-using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.RegularExpressions;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
+using Inedo.ExecutionEngine;
+using Inedo.ExecutionEngine.Executer;
+using Inedo.ExecutionEngine.Variables;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.IO;
+using Inedo.Web;
 
 namespace Inedo.Extensions.DotNet.Operations.DotNet
 {
@@ -15,6 +18,8 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
     public abstract class DotNetOperation : ExecuteOperation
     {
         private static readonly LazyRegex WarningRegex = new(@"\bwarning\b", RegexOptions.Compiled);
+        private static readonly Lazy<string> DotNetInstallPs1 = new(() => LoadScript("dotnet-install.ps1"));
+        private static readonly Lazy<string> DotNetInstallSh = new(() => LoadScript("dotnet-install.sh"));
 
         protected DotNetOperation()
         {
@@ -26,6 +31,14 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         public string AdditionalArguments { get; set; }
 
         [Category("Advanced")]
+        [ScriptAlias("EnsureDotNetInstalled")]
+        [DisplayName("Ensure dotnet installed")]
+        [Description("This uses Microsoft's dotnet-install script to ensure that the specified version is installed. Values other than \"auto\" will be passed to the Channel parameter. The \"auto\" value will attempt to determine the SDK your project uses and ensure that it is installed.")]
+        [SuggestableValue("auto", "7.0", "6.0", "5.0")]
+        [PlaceholderText("not set (do not install)")]
+        public string EnsureDotNetInstalled { get; set; }
+
+        [Category("Advanced")]
         [ScriptAlias("DotNetPath")]
         [ScriptAlias("DotNetExePath", Obsolete = true)]
         [DisplayName("dotnet path")]
@@ -35,13 +48,16 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
         protected override void LogProcessOutput(string text) => this.Log(WarningRegex.IsMatch(text) ? MessageLevel.Warning : MessageLevel.Debug, text);
 
-        protected async Task<string> GetDotNetExePath(IOperationExecutionContext context, bool logErrorIfNotFound = true)
+        protected async Task<string> GetDotNetExePath(IOperationExecutionContext context, string projectPath, bool logErrorIfNotFound = true)
         {
             if (!string.IsNullOrWhiteSpace(this.DotNetExePath))
             {
                 this.LogDebug($"dotnet path specified as: {this.DotNetExePath}");
                 return this.DotNetExePath;
             }
+
+            if (!string.IsNullOrEmpty(this.EnsureDotNetInstalled))
+                await this.InstallDotNetAsync(context, projectPath);
 
             this.LogDebug("$DotNetExePath is not specified; attempting to find dotnet...");
 
@@ -117,6 +133,123 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                     }
                 }
             }
+        }
+
+        private async Task InstallDotNetAsync(IOperationExecutionContext context, string projectPath)
+        {
+            this.LogInformation("Ensuring dotnet SDK is present...");
+
+            var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
+
+            string globalJsonPath = null;
+            string channel = "STS";
+
+            if (string.Equals(this.EnsureDotNetInstalled, "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                globalJsonPath = await FindGlobalJsonAsync(fileOps, Path.HasExtension(projectPath) ? PathEx.GetDirectoryName(projectPath) : projectPath);
+                if (!string.IsNullOrEmpty(globalJsonPath))
+                    this.LogDebug($"Found global.json at {globalJsonPath}.");
+            }
+            else
+            {
+                channel = this.EnsureDotNetInstalled;
+            }
+
+            using var sw = new StringWriter();
+            var writer = new ScriptWriter(sw);
+            var action = fileOps.DirectorySeparator == '\\' ? GetPSCall(globalJsonPath, channel) : GetSHExec(globalJsonPath, channel);
+            action.Write(writer);
+
+            var nested = context.CreateNestedOtterScript(sw.ToString());
+            var scriptVar = new NestedVariable(fileOps.DirectorySeparator == '\\' ? DotNetInstallPs1.Value : DotNetInstallSh.Value);
+
+            nested.SetAdditionalVariables(
+                new Dictionary<RuntimeVariableName, IRuntimeVariable>
+                {
+                    [scriptVar.Name] = scriptVar
+                }
+            );
+
+            var result = await nested.ExecuteAsync(context.CancellationToken);
+            if (result >= ExecutionStatus.Error)
+                throw new ExecutionFailureException("Failure installing .NET SDK.");
+
+            this.LogInformation(".NET SDK installed/verified.");
+        }
+        private static ActionStatement GetSHExec(string globalJsonPath, string channel)
+        {
+            var args = new StringBuilder("--no-path");
+
+            if (!string.IsNullOrEmpty(globalJsonPath))
+            {
+                args.Append(" --jsonfile ");
+                args.AppendArgument(globalJsonPath);
+            }
+            else
+            {
+                args.Append(" --channel ");
+                args.AppendArgument(channel);
+            }
+
+            return new ActionStatement(
+                "SHExec",
+                new Dictionary<string, string>
+                {
+                    ["Text"] = "$installDotNet",
+                    ["Arguments"] = ProcessedString.FromRuntimeValue(args.ToString()).ToString()
+                }
+            );
+        }
+        private static ActionStatement GetPSCall(string globalJsonPath, string channel)
+        {
+            var parameters = new Dictionary<string, RuntimeValue> { ["NoPath"] = "true" };
+
+            if (!string.IsNullOrEmpty(globalJsonPath))
+                parameters["JSonFile"] = globalJsonPath;
+            else
+                parameters["Channel"] = channel;
+
+            return new ActionStatement(
+                "PSCall",
+                new Dictionary<string, string>
+                {
+                    ["Name"] = "dotnet-install.ps1",
+                    ["ScriptText"] = "$installDotNet",
+                    ["Parameters"] = ProcessedString.FromRuntimeValue(new RuntimeValue(parameters)).ToString()
+                }
+            );
+        }
+        private static async Task<string> FindGlobalJsonAsync(IFileOperationsExecuter fileOps, string path)
+        {
+            var baseDir = await fileOps.GetBaseWorkingDirectoryAsync();
+
+            while (!string.IsNullOrEmpty(path) && !path.Equals(baseDir, StringComparison.OrdinalIgnoreCase))
+            {
+                var globalJsonPath = fileOps.CombinePath(path, "global.json");
+                if (await fileOps.FileExistsAsync(globalJsonPath))
+                    return globalJsonPath;
+
+                path = PathEx.GetDirectoryName(path);
+            }
+
+            return null;
+        }
+        private static string LoadScript(string name)
+        {
+            using var stream = typeof(DotNetOperation).Assembly.GetManifestResourceStream($"Inedo.Extensions.DotNet.{name}");
+            using var reader = new StreamReader(stream, InedoLib.UTF8Encoding);
+            return reader.ReadToEnd();
+        }
+
+        private sealed class NestedVariable : IRuntimeVariable
+        {
+            private readonly string value;
+
+            public NestedVariable(string value) => this.value = value;
+
+            public RuntimeVariableName Name => new("installDotNet", RuntimeValueType.Scalar);
+
+            public RuntimeValue GetValue() => this.value;
         }
     }
 }

@@ -1,8 +1,5 @@
-﻿using System;
-using System.ComponentModel;
-using System.Linq;
+﻿using System.ComponentModel;
 using System.Text;
-using System.Threading.Tasks;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
@@ -46,14 +43,14 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
         {
-            var dotNetPath = await this.GetDotNetExePath(context);
+            var projectPath = context.ResolvePath(this.ProjectPath);
+
+            var dotNetPath = await this.GetDotNetExePath(context, projectPath);
             if (string.IsNullOrEmpty(dotNetPath))
                 return;
 
             var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
             var trxFileName = fileOps.CombinePath(await fileOps.GetBaseWorkingDirectoryAsync(), "Temp", $"{Guid.NewGuid():N}.trx");
-
-            var projectPath = context.ResolvePath(this.ProjectPath);
 
             var args = new StringBuilder("test ");
             args.AppendArgument(projectPath);
