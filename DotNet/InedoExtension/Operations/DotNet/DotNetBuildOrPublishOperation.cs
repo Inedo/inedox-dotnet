@@ -36,19 +36,19 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         [Description("If specified, this NuGet package source will be used to restore packages when building.")]
         public string PackageSource { get; set; }
 
-        [Category("Advanced")]
+        [Category("Build Configuration")]
         [ScriptAlias("Version")]
         [PlaceholderText("not set")]
         public string Version { get; set; }
-        [Category("Advanced")]
+        [Category("Build Configuration")]
         [ScriptAlias("Framework")]
         [SuggestableValue(typeof(TargetFrameworkSuggestionProvider))]
         public string Framework { get; set; }
-        [Category("Advanced")]
+        [Category("Build Configuration")]
         [ScriptAlias("Runtime")]
         [SuggestableValue(typeof(RuntimeSuggestionProvider))]
         public string Runtime { get; set; }
-        [Category("Advanced")]
+        [Category("Build Configuration")]
         [ScriptAlias("Output")]
         [Description("Specifies an output directory for the build.")]
         public string Output { get; set; }
@@ -61,7 +61,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             "or enter a path like " + @"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VisualStudio\v17.0")]
         [SuggestableValue("embedded", "search")]
         public string VSToolsPath { get; set; }
-        [Category("Advanced")]
+        [Category("Build Configuration")]
         [ScriptAlias("ForceDependencyResolution")]
         [DisplayName("Force dependency resolution")]
         [PlaceholderText("false")]
