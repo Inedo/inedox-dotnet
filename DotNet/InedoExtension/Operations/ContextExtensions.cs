@@ -1,8 +1,5 @@
-﻿using System;
-using System.Globalization;
-using System.IO;
+﻿using System.Globalization;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
 using Inedo.Agents;
@@ -29,6 +26,12 @@ namespace Inedo.Extensions.DotNet.Operations
                 throw new ArgumentNullException(nameof(trxFileName));
 
             var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
+
+            if (!await fileOps.FileExistsAsync(trxFileName))
+            {
+                context.Log.LogError($"Test output file {trxFileName} does not exist.");
+                return;
+            }
 
             XDocument doc;
             using (var file = await fileOps.OpenFileAsync(trxFileName, FileMode.Open, FileAccess.Read))

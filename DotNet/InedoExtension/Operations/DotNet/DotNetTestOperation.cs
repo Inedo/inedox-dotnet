@@ -108,6 +108,8 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             );
 
             this.Log(res == 0 ? MessageLevel.Debug : MessageLevel.Error, "dotnet exit code: " + res);
+
+            await context.RecordUnitTestResultsAsync(trxFileName, this.TestGroup);
         }
 
         protected override ExtendedRichDescription GetDescription(IOperationConfiguration config)
