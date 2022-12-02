@@ -1,14 +1,12 @@
-﻿using System;
-using System.ComponentModel;
-using System.Linq;
+﻿using System.ComponentModel;
 using System.Text;
-using System.Threading.Tasks;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Extensions.DotNet.SuggestionProviders;
+using Inedo.Extensions.PackageSources;
 using Inedo.Web;
 
 namespace Inedo.Extensions.DotNet.Operations.DotNet
@@ -46,14 +44,14 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
         {
-            var dotNetPath = await this.GetDotNetExePath(context);
+            var projectPath = context.ResolvePath(this.ProjectPath);
+
+            var dotNetPath = await this.GetDotNetExePath(context, projectPath);
             if (string.IsNullOrEmpty(dotNetPath))
                 return;
 
             var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
             var trxFileName = fileOps.CombinePath(await fileOps.GetBaseWorkingDirectoryAsync(), "Temp", $"{Guid.NewGuid():N}.trx");
-
-            var projectPath = context.ResolvePath(this.ProjectPath);
 
             var args = new StringBuilder("test ");
             args.AppendArgument(projectPath);
@@ -75,23 +73,20 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
             if (!string.IsNullOrWhiteSpace(this.PackageSource))
             {
-                var source = Util.GetPackageSources()
-                    .FirstOrDefault(s => string.Equals(s.ResourceInfo.Name, this.PackageSource, StringComparison.OrdinalIgnoreCase));
-
+                var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
                 if (source == null)
                 {
                     this.LogError($"Package source \"{this.PackageSource}\" not found.");
                     return;
                 }
-
-                if (source.PackageType != AttachedPackageType.NuGet)
+                if (source is not INuGetPackageSource nuuget)
                 {
-                    this.LogError($"Package source \"{this.PackageSource}\" is a {source.PackageType} source; it must be a NuGet source for use with this operation.");
+                    this.LogError($"Package source \"{this.PackageSource}\" is a {source.GetType().Name} source; it must be a NuGet source for use with this operation.");
                     return;
                 }
 
                 args.Append("--source ");
-                args.AppendArgument(source.FeedUrl);
+                args.AppendArgument(nuuget.SourceUrl);
             }
 
             if (!string.IsNullOrWhiteSpace(this.AdditionalArguments))
@@ -114,6 +109,8 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             );
 
             this.Log(res == 0 ? MessageLevel.Debug : MessageLevel.Error, "dotnet exit code: " + res);
+
+            await context.RecordUnitTestResultsAsync(trxFileName, this.TestGroup);
         }
 
         protected override ExtendedRichDescription GetDescription(IOperationConfiguration config)

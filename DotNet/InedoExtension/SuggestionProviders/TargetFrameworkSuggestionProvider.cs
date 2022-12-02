@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
-using Inedo.Extensibility;
+﻿using Inedo.Extensibility;
 using Inedo.Web;
 
 namespace Inedo.Extensions.DotNet.SuggestionProviders
@@ -25,6 +23,7 @@ namespace Inedo.Extensions.DotNet.SuggestionProviders
             "netcoreapp2.2",
             "netcoreapp3.0",
             "netcoreapp3.1",
+            "net7.0",
             "net6.0",
             "net5.0",
             "net11",

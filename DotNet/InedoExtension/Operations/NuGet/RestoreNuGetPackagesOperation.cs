@@ -6,6 +6,7 @@ using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Extensibility.SecureResources;
+using Inedo.Extensions.PackageSources;
 using Inedo.Extensions.SecureResources;
 using Inedo.Web;
 
@@ -28,28 +29,33 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
         [PlaceholderText("default")]
         public string PackagesDirectory { get; set; }
         [ScriptAlias("Source")]
-        [DisplayName("Source URL")]
-        [PlaceholderText("Use default URL specified in nuget.config")]
-        public string ServerUrl { get; set; }
-        [Category("Advanced")]
-        [ScriptAlias("SourceName")]
+        [ScriptAlias("SourceName", Obsolete = true)]
         [DisplayName("Package source")]
-        [SuggestableValue(typeof(SecureResourceSuggestionProvider<NuGetPackageSource>))]
+        [Description("If specified, this NuGet package source will be used to restore packages.")]
+        [SuggestableValue(typeof(NuGetPackageSourceSuggestionProvider))]
         public string PackageSource { get; set; }
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
         {
             if (!string.IsNullOrEmpty(this.PackageSource))
             {
-                if (!string.IsNullOrEmpty(this.ServerUrl))
+                var sourceId = new PackageSourceId(this.PackageSource);
+                if (sourceId.Format != PackageSourceIdFormat.Url)
                 {
-                    this.LogWarning("SourceName will be ignored because Source (url) is specified.");
-                }
-                else
-                {
-                    this.LogDebug($"Using package source {this.PackageSource}.");
-                    var packageSource = (NuGetPackageSource)SecureResource.Create(this.PackageSource, (IResourceResolutionContext)context);
-                    this.ServerUrl = packageSource.ApiEndpointUrl;
+                    this.LogDebug($"Resolving package source \"{this.PackageSource}\"...");
+                    var source = await AhPackages.GetPackageSourceAsync(sourceId, context, context.CancellationToken);
+                    if (source == null)
+                    {
+                        this.LogError($"Package source \"{this.PackageSource}\" not found.");
+                        return;
+                    }
+                    if (source is not INuGetPackageSource nuuget)
+                    {
+                        this.LogError($"Package source \"{this.PackageSource}\" is a {source.GetType().Name} source; it must be a NuGet source for use with this operation.");
+                        return;
+                    }
+
+                    this.PackageSource = nuuget.SourceUrl;
                 }
             }
 
@@ -68,8 +74,8 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                 if (!string.IsNullOrEmpty(this.PackagesDirectory))
                     buffer.Append($" -PackagesDirectory \"{TrimDirectorySeparator(context.ResolvePath(this.PackagesDirectory))}\"");
 
-                if (!string.IsNullOrWhiteSpace(this.ServerUrl))
-                    buffer.Append($" -Source \"{this.ServerUrl}\"");
+                if (!string.IsNullOrWhiteSpace(this.PackageSource))
+                    buffer.Append($" -Source \"{this.PackageSource}\"");
             }
             else
             {
@@ -80,11 +86,14 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                 if (!string.IsNullOrEmpty(this.PackagesDirectory))
                     buffer.Append($" --packages \"{TrimDirectorySeparator(context.ResolvePath(this.PackagesDirectory))}\"");
 
-                if (!string.IsNullOrWhiteSpace(this.ServerUrl))
-                    buffer.Append($" --source \"{this.ServerUrl}\"");
+                if (!string.IsNullOrWhiteSpace(this.PackageSource))
+                    buffer.Append($" --source \"{this.PackageSource}\"");
             }
 
-            await this.ExecuteNuGetAsync(context, nugetInfo, buffer.ToString(), null);
+            var exitCode = await this.ExecuteNuGetAsync(context, nugetInfo, buffer.ToString(), null); 
+            if (exitCode != 0)
+                this.LogError($"NuGet exited with code {exitCode}");
+            
             this.LogInformation("Done restoring packages.");
         }
 

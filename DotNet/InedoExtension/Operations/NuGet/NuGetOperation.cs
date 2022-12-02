@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.ComponentModel;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
@@ -35,7 +30,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
 
         protected async Task<ToolInfo> GetNuGetInfoAsync(IOperationExecutionContext context)
         {
-            var dotNetPath = await this.GetDotNetExePath(context, false);
+            var dotNetPath = await this.GetDotNetExePath(context, context.WorkingDirectory, false);
 
             // nuget.exe can only be used on windows
             if (await context.Agent.TryGetServiceAsync<ILinuxFileOperationsExecuter>() == null)
@@ -51,7 +46,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
 
             return new ToolInfo(dotNetPath, false);
         }
-        protected async Task ExecuteNuGetAsync(IOperationExecutionContext context, ToolInfo toolInfo, string args, string workingDirectory, string logArgs = null)
+        protected async Task<int> ExecuteNuGetAsync(IOperationExecutionContext context, ToolInfo toolInfo, string args, string workingDirectory, string logArgs = null)
         {
             if (!string.IsNullOrWhiteSpace(this.AdditionalArguments))
             {
@@ -72,8 +67,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                 }
             ).ConfigureAwait(false);
 
-            if (exitCode != 0)
-                this.LogError($"NuGet exited with code {exitCode}");
+            return exitCode;
         }
         protected static string TrimDirectorySeparator(string d)
         {

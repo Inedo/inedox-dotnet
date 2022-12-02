@@ -1,14 +1,15 @@
-﻿using System;
-using System.ComponentModel;
-using System.Linq;
+﻿using System.ComponentModel;
 using System.Text;
-using System.Threading.Tasks;
+using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Extensions.DotNet.SuggestionProviders;
+using Inedo.Extensions.PackageSources;
+using Inedo.IO;
 using Inedo.Web;
 
 namespace Inedo.Extensions.DotNet.Operations.DotNet
@@ -35,19 +36,32 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         [Description("If specified, this NuGet package source will be used to restore packages when building.")]
         public string PackageSource { get; set; }
 
-        [Category("Advanced")]
+        [Category("Build Configuration")]
+        [ScriptAlias("Version")]
+        [PlaceholderText("not set")]
+        public string Version { get; set; }
+        [Category("Build Configuration")]
         [ScriptAlias("Framework")]
         [SuggestableValue(typeof(TargetFrameworkSuggestionProvider))]
         public string Framework { get; set; }
-        [Category("Advanced")]
+        [Category("Build Configuration")]
         [ScriptAlias("Runtime")]
         [SuggestableValue(typeof(RuntimeSuggestionProvider))]
         public string Runtime { get; set; }
-        [Category("Advanced")]
+        [Category("Build Configuration")]
         [ScriptAlias("Output")]
         [Description("Specifies an output directory for the build.")]
         public string Output { get; set; }
         [Category("Advanced")]
+        [ScriptAlias("VSToolsPath")]
+        [PlaceholderText("not set")]
+        [Description(
+            "Some older .NET applications (especially Framework) may require MSBuild targets included with Visual Studio. Use " +
+            "\"embedded\" to try resolving these without Visual Studio, \"search\" to try to find the targets using the Registry, " +
+            "or enter a path like " + @"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VisualStudio\v17.0")]
+        [SuggestableValue("embedded", "search")]
+        public string VSToolsPath { get; set; }
+        [Category("Build Configuration")]
         [ScriptAlias("ForceDependencyResolution")]
         [DisplayName("Force dependency resolution")]
         [PlaceholderText("false")]
@@ -61,11 +75,11 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
         {
-            var dotNetPath = await this.GetDotNetExePath(context);
+            var projectPath = context.ResolvePath(this.ProjectPath);
+
+            var dotNetPath = await this.GetDotNetExePath(context, projectPath);
             if (string.IsNullOrEmpty(dotNetPath))
                 return;
-
-            var projectPath = context.ResolvePath(this.ProjectPath);
 
             var args = new StringBuilder($"{this.CommandName} ");
             args.AppendArgument(projectPath);
@@ -88,14 +102,54 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 args.AppendArgument(this.Runtime);
             }
 
-            if (this.Force)
-                args.Append("--force ");
-
             if (!string.IsNullOrWhiteSpace(this.Output))
             {
                 args.Append("--output ");
                 args.AppendArgument(context.ResolvePath(this.Output));
             }
+
+            if (!string.IsNullOrWhiteSpace(this.Version))
+                args.AppendArgument($"-p:Version={this.Version}");
+
+            var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
+
+            if (!string.IsNullOrEmpty(this.VSToolsPath))
+            {
+                string vsToolsPathArg;
+                if (this.VSToolsPath == "embedded")
+                {
+                    var path = fileOps.CombinePath(await fileOps.GetBaseWorkingDirectoryAsync(), ".dotnet-ext");
+                    var zipPath = fileOps.CombinePath(path, "VSTargets.zip");
+                    using (var src = typeof(DotNetBuildOrPublishOperation).Assembly.GetManifestResourceStream("Inedo.Extensions.DotNet.VSTargets.zip"))
+                    {
+                        using var dest = await fileOps.OpenFileAsync(zipPath, FileMode.Create, FileAccess.Write);
+                        await src.CopyToAsync(dest, context.CancellationToken);
+                    }
+
+                    vsToolsPathArg = fileOps.CombinePath(path, "vstools");
+                    await fileOps.ExtractZipFileAsync(zipPath, vsToolsPathArg, IO.FileCreationOptions.OverwriteReadOnly);
+                }
+                else if (this.VSToolsPath == "search")
+                {
+                    this.LogDebug("VSToolsPath is set to \"search\", so using vswhere.exe to search...");
+                    // use vswhere to try finding this path
+                    vsToolsPathArg = await FindMSBuildPathUsingVSWhereAsync(context);
+                    if (vsToolsPathArg == null)
+                        this.LogWarning("VSToolsPath is set to \"search\", but a location could not be found.");
+                    else
+                        this.LogDebug("Found path: " + vsToolsPathArg);
+                }
+                else
+                {
+                    vsToolsPathArg = this.VSToolsPath;
+                }
+
+                if (!string.IsNullOrWhiteSpace(vsToolsPathArg))
+                    args.AppendArgument("-p:VSToolsPath={vsToolsPathArg}");
+            }
+
+            if (this.Force)
+                args.Append("--force ");
 
             if (this.Verbosity != DotNetVerbosityLevel.Minimal)
             {
@@ -105,23 +159,20 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
             if (!string.IsNullOrWhiteSpace(this.PackageSource))
             {
-                var source = Util.GetPackageSources()
-                    .FirstOrDefault(s => string.Equals(s.ResourceInfo.Name, this.PackageSource, StringComparison.OrdinalIgnoreCase));
-
+                var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
                 if (source == null)
                 {
                     this.LogError($"Package source \"{this.PackageSource}\" not found.");
                     return;
                 }
-
-                if (source.PackageType != AttachedPackageType.NuGet)
+                if (source is not INuGetPackageSource nuuget)
                 {
-                    this.LogError($"Package source \"{this.PackageSource}\" is a {source.PackageType} source; it must be a NuGet source for use with this operation.");
+                    this.LogError($"Package source \"{this.PackageSource}\" is a {source.GetType().Name} source; it must be a NuGet source for use with this operation.");
                     return;
                 }
 
                 args.Append("--source ");
-                args.AppendArgument(source.FeedUrl);
+                args.AppendArgument(nuuget.SourceUrl);
             }
 
             this.AppendAdditionalArguments(args);
@@ -130,12 +181,14 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 args.Append(this.AdditionalArguments);
 
             this.LogDebug($"Ensuring working directory {context.WorkingDirectory} exists...");
-            var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
             await fileOps.CreateDirectoryAsync(context.WorkingDirectory);
 
             var fullArgs = args.ToString();
             this.LogDebug($"Executing dotnet {fullArgs}...");
 
+            bool errNothingToDo = false, errMsWebAppTargets = false, errMSB4062_tasks = false;
+
+            this.MessageLogged += DotNetBuildOrPublishOperation_MessageLogged;
             int res = await this.ExecuteCommandLineAsync(
                 context,
                 new RemoteProcessStartInfo
@@ -145,8 +198,61 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                     WorkingDirectory = context.WorkingDirectory
                 }
             );
+            this.MessageLogged -= DotNetBuildOrPublishOperation_MessageLogged;
 
-            this.Log(res == 0 ? MessageLevel.Debug : MessageLevel.Error, "dotnet exit code: " + res);
+            if (res == 0)
+            {
+                this.LogDebug("dotnet exited successfully (exitcode=0)");
+            }
+            else
+            {
+                this.LogError($"dotnet did not exit successfully (exitcode={res}).");
+                if (errNothingToDo && !string.IsNullOrEmpty(this.PackageSource))
+                {
+                    this.LogInformation(
+                        "[TIP] It doesn't look like any NuGet packages were restored during the build process. " +
+                        $"This usually means that the Package Source specified ({this.PackageSource}) " +
+                        "does not contain the required packages, which may lead this build error.");
+                }
+
+                if (errMsWebAppTargets && string.IsNullOrEmpty(this.VSToolsPath))
+                {
+                    this.LogInformation(
+                        "[TIP] It looks like this project requires MSBuild targets that typically part of Visual Studio. " +
+                        "To resolve this, set the \"VSToolsPath\" to \"embedded\", which will instruct MSBuild to try to use the " +
+                        "common MSBuild targets that we've included in BuildMaster.");
+                }
+                else if (errMSB4062_tasks || errMsWebAppTargets)
+                {
+                    if (this.VSToolsPath == "embedded")
+                    {
+                        this.LogInformation(
+                            "[TIP] Unfortunately, it looks like \"embedded\" didn't work as the VSToolsPath. " +
+                            "If Visual Studio is installed on this server, try using \"search\" or entering the location (e.g. "
+                            + @"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VisualStudio\v17.0" +
+                            ") and then Devenv::Build (which uses Visual Studio). " +
+                            "If Visual Studio is not installed, try using the MSBuild::Build-Project operation first.");
+                    }
+                    else
+                    {
+                        this.LogInformation(
+                            "[TIP] Unfortunately, it looks like dotnet still isn't able to resolve the targets specified in VSToolsPath. " +
+                            "Try switching to the MSBuild::Build-Project or Devenv::Build operation instead.");
+                    }
+                }
+            }
+
+            void DotNetBuildOrPublishOperation_MessageLogged(object sender, LogMessageEventArgs e)
+            {
+                if (!errNothingToDo && e.Message.Contains("Nothing to do. None of the projects specified contain packages to restore."))
+                    errNothingToDo = true;
+
+                if (!errMsWebAppTargets && Regex.IsMatch(e.Message, @"(error MSB4019: The imported project)(.*)(Web(Applications)?\\Microsoft\.)(.*)(\.targets)"))
+                    errMsWebAppTargets = true;
+
+                if (!errMSB4062_tasks && e.Message.Contains("error MSB4062"))
+                    errMSB4062_tasks = true;
+            }
         }
 
         protected virtual void AppendAdditionalArguments(StringBuilder args)
@@ -175,6 +281,54 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 ),
                 extended
             );
+        }
+
+        private async Task<string> FindMSBuildPathUsingVSWhereAsync(IOperationExecutionContext context)
+        {
+            var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
+            var path = fileOps.CombinePath(await fileOps.GetBaseWorkingDirectoryAsync(), ".dotnet-ext");
+            var vsWherePath = fileOps.CombinePath(path, "vswhere.exe");
+            using (var src = typeof(DotNetBuildOrPublishOperation).Assembly.GetManifestResourceStream("Inedo.Extensions.DotNet.vswhere.exe"))
+            {
+                using var dest = await fileOps.OpenFileAsync(vsWherePath, FileMode.Create, FileAccess.Write);
+                await src.CopyToAsync(dest, context.CancellationToken);
+            }
+
+            var outputFile = fileOps.CombinePath(path, "vswhere.out");
+
+            // vswhere.exe documentation: https://github.com/Microsoft/vswhere/wiki
+            // component IDs documented here: https://docs.microsoft.com/en-us/visualstudio/install/workload-and-component-ids
+            var startInfo = new RemoteProcessStartInfo
+            {
+                FileName = vsWherePath,
+                WorkingDirectory = PathEx.GetDirectoryName(vsWherePath),
+                Arguments = @"-products * -nologo -format xml -utf8 -latest -sort -requires Microsoft.Component.MSBuild -find **\MSBuild.exe",
+                OutputFileName = outputFile
+            };
+
+            this.LogDebug("Process: " + startInfo.FileName);
+            this.LogDebug("Arguments: " + startInfo.Arguments);
+            this.LogDebug("Working directory: " + startInfo.WorkingDirectory);
+
+            await this.ExecuteCommandLineAsync(context, startInfo).ConfigureAwait(false);
+            using var outStream = await fileOps.OpenFileAsync(outputFile, FileMode.Open, FileAccess.Read);
+
+            var xdoc = await XDocument.LoadAsync(outStream, LoadOptions.None, context.CancellationToken);
+
+            var files = from f in xdoc.Root.Descendants("file")
+                        let file = f.Value
+                        // unincluse arm for now
+                        where file.IndexOf("arm64", StringComparison.OrdinalIgnoreCase) < 0
+                        // prefer 32-bit MSBuild
+                        orderby file.IndexOf("amd64", StringComparison.OrdinalIgnoreCase) > -1 ? 1 : 0
+                        select file;
+
+            var filePath = files.FirstOrDefault();
+
+            if (string.IsNullOrWhiteSpace(filePath))
+                return null;
+
+            return PathEx.GetDirectoryName(filePath);
         }
     }
 }
