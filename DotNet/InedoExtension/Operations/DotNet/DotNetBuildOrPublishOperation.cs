@@ -145,7 +145,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 }
 
                 if (!string.IsNullOrWhiteSpace(vsToolsPathArg))
-                    args.AppendArgument("-p:VSToolsPath={vsToolsPathArg}");
+                    args.AppendArgument($"-p:VSToolsPath={vsToolsPathArg}");
             }
 
             if (this.Force)
