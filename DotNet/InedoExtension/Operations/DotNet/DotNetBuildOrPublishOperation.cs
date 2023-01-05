@@ -70,6 +70,12 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         [ScriptAlias("Verbosity")]
         [DefaultValue(DotNetVerbosityLevel.Minimal)]
         public DotNetVerbosityLevel Verbosity { get; set; } = DotNetVerbosityLevel.Minimal;
+        [Category("Advanced")]
+        [ScriptAlias("ContinuousIntegrationBuild")]
+        [DefaultValue(true)]
+        [DisplayName("CI build")]
+        [Description("Sets the ContinuousIntegrationBuild MSBuild flag, which is recommended for all official (non-local) builds.")]
+        public bool ContinuousIntegrationBuild { get; set; } = true;
 
         protected abstract string CommandName { get; }
 
@@ -174,6 +180,9 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 args.Append("--source ");
                 args.AppendArgument(nuuget.SourceUrl);
             }
+
+            if (this.ContinuousIntegrationBuild)
+                args.AppendArgument("-p:ContinuousIntegrationBuild=true");
 
             this.AppendAdditionalArguments(args);
 
