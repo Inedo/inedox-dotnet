@@ -47,7 +47,10 @@ namespace Inedo.Extensions.DotNet.Operations
             {
                 var testName = (string)result.Attribute("testName");
                 var outcome = (string)result.Attribute("outcome");
-                var output = result.Element("Output");
+                var output =
+                    result.Element("Output")
+                    // sometimes this is on InnerResults
+                    ?? result.Descendants("Output").FirstOrDefault();
                 UnitTestStatus status;
                 string testResult;
 
@@ -67,7 +70,10 @@ namespace Inedo.Extensions.DotNet.Operations
                 else
                 {
                     status = UnitTestStatus.Failed;
-                    testResult = GetResultTextFromOutput(output);
+                    if (output == null)
+                        testResult = "No output found";
+                    else
+                        testResult = GetResultTextFromOutput(output);
                     failures = true;
                 }
 
