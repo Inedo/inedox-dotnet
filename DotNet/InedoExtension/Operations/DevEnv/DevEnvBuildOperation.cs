@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel;
 using System.Text;
-using System.Xml.Linq;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
@@ -8,7 +7,6 @@ using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Extensions.DotNet.Operations.DotNet;
 using Inedo.Extensions.DotNet.SuggestionProviders;
-using Inedo.IO;
 using Inedo.Web;
 
 namespace Inedo.Extensions.DotNet.Operations.DevEnv
@@ -16,7 +14,7 @@ namespace Inedo.Extensions.DotNet.Operations.DevEnv
     [ScriptAlias("Build")]
     [Description("Runs devenv.exe (Visual Studio) to build the specified project or solution.")]
     [ScriptNamespace("DevEnv")]
-    public sealed class DevEnvBuildOperation : ExecuteOperation
+    public sealed class DevEnvBuildOperation : ExecuteOperation, IVSWhereOperation
     {
         [Required]
         [ScriptAlias("ProjectFile")]
@@ -50,7 +48,7 @@ namespace Inedo.Extensions.DotNet.Operations.DevEnv
         {
             if (string.IsNullOrEmpty(this.DevEnvPath))
             {
-                this.DevEnvPath = await FindDevEnvPathUsingVSWhereAsync(context);
+                this.DevEnvPath = await this.FindUsingVSWhereAsync(context, "-find **\\devenv.exe");
                 if (string.IsNullOrEmpty(this.DevEnvPath))
                 {
                     this.LogError("DevEnvPath is not set and could not find devenv.exe using vswhere.");
@@ -85,48 +83,6 @@ namespace Inedo.Extensions.DotNet.Operations.DevEnv
             );
         }
 
-        private async Task<string> FindDevEnvPathUsingVSWhereAsync(IOperationExecutionContext context)
-        {
-            var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
-            var path = fileOps.CombinePath(await fileOps.GetBaseWorkingDirectoryAsync(), ".dotnet-ext");
-            var vsWherePath = fileOps.CombinePath(path, "vswhere.exe");
-            using (var src = typeof(DotNetBuildOrPublishOperation).Assembly.GetManifestResourceStream("Inedo.Extensions.DotNet.vswhere.exe"))
-            {
-                using var dest = await fileOps.OpenFileAsync(vsWherePath, FileMode.Create, FileAccess.Write);
-                await src.CopyToAsync(dest, context.CancellationToken);
-            }
-
-            var outputFile = fileOps.CombinePath(path, "vswhere.out");
-
-            // vswhere.exe documentation: https://github.com/Microsoft/vswhere/wiki
-            // component IDs documented here: https://docs.microsoft.com/en-us/visualstudio/install/workload-and-component-ids
-            var startInfo = new RemoteProcessStartInfo
-            {
-                FileName = vsWherePath,
-                WorkingDirectory = PathEx.GetDirectoryName(vsWherePath),
-                Arguments = @"-products * -nologo -format xml -utf8 -latest -sort -find **\devenv.exe",
-                OutputFileName = outputFile
-            };
-
-            this.LogDebug("Process: " + startInfo.FileName);
-            this.LogDebug("Arguments: " + startInfo.Arguments);
-            this.LogDebug("Working directory: " + startInfo.WorkingDirectory);
-
-            await this.ExecuteCommandLineAsync(context, startInfo).ConfigureAwait(false);
-            using var outStream = await fileOps.OpenFileAsync(outputFile, FileMode.Open, FileAccess.Read);
-
-            var xdoc = await XDocument.LoadAsync(outStream, LoadOptions.None, context.CancellationToken);
-
-            var files = from f in xdoc.Root.Descendants("file")
-                        let file = f.Value
-                        select file;
-
-            var filePath = files.FirstOrDefault();
-
-            if (string.IsNullOrWhiteSpace(filePath))
-                return null;
-
-            return filePath;
-        }
+        Task<int> IVSWhereOperation.ExecuteCommandLineAsync(IOperationExecutionContext context, RemoteProcessStartInfo startInfo) => this.ExecuteCommandLineAsync(context, startInfo);
     }
 }

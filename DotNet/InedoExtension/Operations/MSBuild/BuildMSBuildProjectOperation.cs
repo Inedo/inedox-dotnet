@@ -1,16 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.IO;
-using System.Linq;
+﻿using System.ComponentModel;
 using System.Runtime.Versioning;
-using System.Threading.Tasks;
-using System.Xml.Linq;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
+using Inedo.Extensions.DotNet.Operations.DotNet;
 using Inedo.Extensions.DotNet.SuggestionProviders;
 using Inedo.IO;
 using Inedo.Web;
@@ -18,14 +13,13 @@ using Microsoft.Win32;
 
 namespace Inedo.Extensions.DotNet.Operations.MSBuild
 {
-    [Serializable]
     [Tag(".net")]
     [ScriptAlias("Build-Project")]
     [DisplayName("Build MSBuild Project")]
     [Description("Builds a project or solution using MSBuild.")]
     [ScriptNamespace("MSBuild")]
     [DefaultProperty(nameof(ProjectPath))]
-    public sealed class BuildMSBuildProjectOperation : RemoteExecuteOperation
+    public sealed class BuildMSBuildProjectOperation : RemoteExecuteOperation, IVSWhereOperation
     {
         [Required]
         [ScriptAlias("ProjectFile")]
@@ -85,6 +79,16 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
             );
         }
 
+        protected override async Task BeforeRemoteExecuteAsync(IOperationExecutionContext context)
+        {
+            if (!string.IsNullOrWhiteSpace(this.MSBuildToolsPath))
+                return;
+
+            this.MSBuildToolsPath = await this.FindUsingVSWhereAsync(context, "-requires Microsoft.Component.MSBuild -find **\\MSBuild.exe").ConfigureAwait(false);
+
+            await base.BeforeRemoteExecuteAsync(context);
+        }
+
         protected override async Task<object> RemoteExecuteAsync(IRemoteOperationExecutionContext context)
         {
             var projectFullPath = context.ResolvePath(this.ProjectPath);
@@ -128,7 +132,7 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
 
             var allArgs = $"\"/logger:{msbuildLoggerPath}\" /noconsolelogger " + arguments;
 
-            var msBuildPath = await this.GetMSBuildToolsPath(context).ConfigureAwait(false);
+            var msBuildPath = this.GetMSBuildToolsPath();
             if (msBuildPath == null)
                 return -1;
 
@@ -147,7 +151,7 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
             
             return await this.ExecuteCommandLineAsync(context, startInfo).ConfigureAwait(false);
         }
-        private async Task<string> GetMSBuildToolsPath(IRemoteOperationExecutionContext context)
+        private string GetMSBuildToolsPath()
         {
             if (!string.IsNullOrWhiteSpace(this.MSBuildToolsPath))
             {
@@ -155,15 +159,9 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
                 return this.MSBuildToolsPath;
             }
 
-            string path = await this.FindMSBuildPathUsingVSWhereAsync(context).ConfigureAwait(false);
-
-            if (path != null)
-            {
-                this.LogDebug("MSBuildToolsPath: " + path);
-                return path;
-            }
-
             this.LogDebug("Could not find MSBuildToolsPath using vswhere.exe, falling back to registry...");
+
+            string path = null;
 
             if (OperatingSystem.IsWindows())
                 path = FindMSBuildUsingRegistry();
@@ -176,51 +174,6 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
 
             this.LogError(@"Could not determine MSBuildToolsPath value on this server. To resolve this issue, ensure that MSBuild is available on this server (e.g. by installing the Visual Studio Build Tools) and retry the build, or create a server-scoped variable named $MSBuildToolsPath set to the location of the MSBuild tools. For example, the tools included with Visual Studio 2017 could be installed to C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\15.0\Bin");
             return null;            
-        }
-
-        private async Task<string> FindMSBuildPathUsingVSWhereAsync(IRemoteOperationExecutionContext context)
-        {
-            this.LogDebug("$MSBuildToolsPath variable is not set. Attempting to find the path to the latest version using vswhere.exe...");
-
-            string vsWherePath = PathEx.Combine(
-                Path.GetDirectoryName(typeof(BuildMSBuildProjectOperation).Assembly.Location),
-                "vswhere.exe"
-            );
-
-            string outputFile = Path.GetTempFileName();
-
-            // vswhere.exe documentation: https://github.com/Microsoft/vswhere/wiki
-            // component IDs documented here: https://docs.microsoft.com/en-us/visualstudio/install/workload-and-component-ids
-            var startInfo = new RemoteProcessStartInfo
-            {
-                FileName = vsWherePath,
-                WorkingDirectory = Path.GetDirectoryName(vsWherePath),
-                Arguments = @"-products * -nologo -format xml -utf8 -latest -sort -requires Microsoft.Component.MSBuild -find **\MSBuild.exe",
-                OutputFileName = outputFile
-            };
-
-            this.LogDebug("Process: " + startInfo.FileName);
-            this.LogDebug("Arguments: " + startInfo.Arguments);
-            this.LogDebug("Working directory: " + startInfo.WorkingDirectory);
-
-            await this.ExecuteCommandLineAsync(context, startInfo).ConfigureAwait(false);
-
-            var xdoc = XDocument.Load(outputFile);
-
-            var files = from f in xdoc.Root.Descendants("file")
-                        let file = f.Value
-                        // unincluse arm for now
-                        where file.IndexOf("arm64", StringComparison.OrdinalIgnoreCase) < 0
-                        // prefer 32-bit MSBuild
-                        orderby file.IndexOf("amd64", StringComparison.OrdinalIgnoreCase) > -1 ? 1 : 0
-                        select file;
-
-            var filePath = files.FirstOrDefault();
-
-            if (string.IsNullOrWhiteSpace(filePath))
-                return null;
-
-            return Path.GetDirectoryName(filePath);
         }
 
         [SupportedOSPlatform("windows")]
@@ -259,5 +212,7 @@ namespace Inedo.Extensions.DotNet.Operations.MSBuild
             _ = Version.TryParse(s, out Version v);
             return v;
         }
+
+        Task<int> IVSWhereOperation.ExecuteCommandLineAsync(IOperationExecutionContext context, RemoteProcessStartInfo startInfo) => this.ExecuteCommandLineAsync(context, startInfo);
     }
 }
