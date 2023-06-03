@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
+using Inedo.ExecutionEngine.Executer;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Extensions.DotNet.SuggestionProviders;
@@ -15,6 +16,8 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
     [DefaultProperty(nameof(ProjectPath))]
     public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereOperation
     {
+        private static readonly LazyRegex ErrorRegex = new(@":\s*error\b", RegexOptions.Compiled);
+
         protected DotNetBuildOrPublishOperation()
         {
         }
@@ -75,13 +78,42 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         [Description("Sets the ContinuousIntegrationBuild MSBuild flag, which is recommended for all official (non-local) builds.")]
         public bool ContinuousIntegrationBuild { get; set; } = true;
 
+        [ScriptAlias("ImageBasedService")]
+        public string ImageBasedService { get; set; }
+
         protected abstract string CommandName { get; }
+
+        private bool UseContainer => !string.IsNullOrEmpty(this.ImageBasedService);
+
+        protected override void LogProcessOutput(string text)
+        {
+            if (this.UseContainer && ErrorRegex.IsMatch(text))
+                this.Log(MessageLevel.Error, text);
+            else
+                base.LogProcessOutput(text);
+        }
+        protected override void LogProcessError(string text)
+        {
+            if (this.UseContainer)
+                this.LogDebug(text);
+            else
+                base.LogProcessError(text);
+        }
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
         {
-            var projectPath = context.ResolvePath(this.ProjectPath);
+            Func<string, string> resolvePath = context.ResolvePath;
+            IDockerHost docker = null;
+            if (this.UseContainer)
+            {
+                this.LogDebug($"Performing containerized build using \"{this.ImageBasedService}\" image based service.");
+                docker = (await context.TryGetServiceAsync<IDockerHost>()) ?? throw new ExecutionFailureException($"Server {context.ServerName} does not have a Docker engine.");
+                resolvePath = docker.ResolveContainerPath;
+            }
 
-            var dotNetPath = await this.GetDotNetExePath(context, projectPath);
+            var projectPath = resolvePath(this.ProjectPath);
+
+            var dotNetPath = this.UseContainer ? "dotnet" : await this.GetDotNetExePath(context, projectPath);
             if (string.IsNullOrEmpty(dotNetPath))
                 return;
 
@@ -109,7 +141,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             if (!string.IsNullOrWhiteSpace(this.Output))
             {
                 args.Append("--output ");
-                args.AppendArgument(context.ResolvePath(this.Output));
+                args.AppendArgument(resolvePath(this.Output));
             }
 
             if (!string.IsNullOrWhiteSpace(this.Version))
@@ -196,15 +228,33 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             bool errNothingToDo = false, errMsWebAppTargets = false, errMSB4062_tasks = false;
 
             this.MessageLogged += DotNetBuildOrPublishOperation_MessageLogged;
-            int res = await this.ExecuteCommandLineAsync(
-                context,
-                new RemoteProcessStartInfo
-                {
-                    FileName = dotNetPath,
-                    Arguments = fullArgs,
-                    WorkingDirectory = context.WorkingDirectory
-                }
-            );
+
+            int res;
+
+            var startInfo = new RemoteProcessStartInfo
+            {
+                FileName = dotNetPath,
+                Arguments = fullArgs,
+                WorkingDirectory = context.WorkingDirectory
+            };
+
+            if (docker == null)
+            {
+                res = await this.ExecuteCommandLineAsync(context, startInfo);
+            }
+            else
+            {
+                res = await docker.ExecuteInContainerAsync(
+                    new ContainerStartInfo(
+                        this.ImageBasedService,
+                        startInfo,
+                        OutputDataReceived: this.LogProcessOutput,
+                        ErrorDataReceived: this.LogProcessError
+                    ),
+                    context.CancellationToken
+                );
+            }
+
             this.MessageLogged -= DotNetBuildOrPublishOperation_MessageLogged;
 
             if (res == 0)
@@ -291,5 +341,27 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         }
 
         Task<int> IVSWhereOperation.ExecuteCommandLineAsync(IOperationExecutionContext context, RemoteProcessStartInfo startInfo) => this.ExecuteCommandLineAsync(context, startInfo);
+
+        private static ReadOnlySpan<char> GetCommonRoot(ReadOnlySpan<char> path1, ReadOnlySpan<char> path2)
+        {
+            if (path1.IsEmpty || path2.IsEmpty)
+                return default;
+
+            var shorter = path1.Length <= path2.Length ? path1 : path2;
+            var longer = path1.Length <= path2.Length ? path2 : path1;
+
+            int index = shorter.Length;
+
+            for (int i = 0; i < shorter.Length; i++)
+            {
+                if (shorter[i] != longer[i])
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            return shorter[0..index];
+        }
     }
 }
