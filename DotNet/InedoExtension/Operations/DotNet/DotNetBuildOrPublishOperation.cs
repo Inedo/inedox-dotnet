@@ -79,6 +79,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         public bool ContinuousIntegrationBuild { get; set; } = true;
 
         [ScriptAlias("ImageBasedService")]
+        [SuggestableValue(typeof(DotNetIBSSuggestionProvider))]
         public string ImageBasedService { get; set; }
 
         protected abstract string CommandName { get; }
