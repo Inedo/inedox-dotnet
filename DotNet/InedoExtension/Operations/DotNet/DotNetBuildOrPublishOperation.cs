@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Inedo.Agents;
@@ -101,7 +102,31 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 base.LogProcessError(text);
         }
 
-        public override async Task ExecuteAsync(IOperationExecutionContext context)
+        public override Task ExecuteAsync(IOperationExecutionContext context)
+        {
+            if (this.UseContainer && !hasDockerHost())
+            {
+                this.LogError($"Containerized builds are not supported in this version of {SDK.ProductName}.");
+                return Task.CompletedTask;
+            }
+
+            return this.ExecuteInternalAsync(context);
+
+            static bool hasDockerHost()
+            {
+                try
+                {
+                    return Type.GetType("Inedo.Extensibility.Operations.IDockerHost,Inedo.SDK", false) != null;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private async Task ExecuteInternalAsync(IOperationExecutionContext context)
         {
             Func<string, string> resolvePath = context.ResolvePath;
             IDockerHost docker = null;
@@ -312,7 +337,6 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                     errMSB4062_tasks = true;
             }
         }
-
         protected virtual void AppendAdditionalArguments(StringBuilder args)
         {
         }
