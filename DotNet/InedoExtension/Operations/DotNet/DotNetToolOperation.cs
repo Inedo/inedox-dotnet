@@ -6,6 +6,7 @@ using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Extensions.PackageSources;
+using Inedo.Extensions.SecureResources;
 using Inedo.IO;
 using Inedo.Web;
 
@@ -103,20 +104,40 @@ DotNet::Tool dotnetsay
 
                 if (!string.IsNullOrWhiteSpace(this.PackageSource))
                 {
-                    var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
-                    if (source == null)
-                    {
-                        this.LogError($"Package source \"{this.PackageSource}\" not found.");
-                        return;
-                    }
-                    if (source is not INuGetPackageSource nuuget)
-                    {
-                        this.LogError($"Package source \"{this.PackageSource}\" is a {source.GetType().Name} source; it must be a NuGet source for use with this operation.");
-                        return;
-                    }
+                    var packageSource = new PackageSourceId(this.PackageSource!);
 
-                    sb.Append(" --add-source ");
-                    sb.AppendArgument(nuuget.SourceUrl);
+                    if (packageSource.Format == PackageSourceIdFormat.ProGetFeed)
+                    {
+                        var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
+                        if (source == null)
+                        {
+                            this.LogError($"Package source \"{this.PackageSource}\" not found.");
+                            return;
+                        }
+                        if (source is not INuGetPackageSource nuuget)
+                        {
+                            this.LogError($"Package source \"{this.PackageSource}\" is a {source.GetType().Name} source; it must be a NuGet source for use with this operation.");
+                            return;
+                        }
+
+                        sb.Append("--source ");
+                        sb.AppendArgument(nuuget.SourceUrl);
+                    }
+                    else if (packageSource.Format == PackageSourceIdFormat.SecureResource)
+                    {
+                        if (!context.TryGetSecureResource(packageSource.GetResourceName(), out var resource) || resource is not NuGetPackageSource nps)
+                        {
+                            this.LogError($"Package source \"{this.PackageSource}\" not found or is not a NuGetPackageSource.");
+                            return;
+                        }
+                        sb.Append("--source ");
+                        sb.AppendArgument(nps.ApiEndpointUrl);
+                    }
+                    else if (packageSource.Format == PackageSourceIdFormat.Url)
+                    {
+                        sb.Append("--source ");
+                        sb.AppendArgument(packageSource.GetUrl());
+                    }
                 }
 
                 res = await this.ExecuteCommandLineAsync(
