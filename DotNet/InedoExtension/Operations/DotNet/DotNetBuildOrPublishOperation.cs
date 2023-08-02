@@ -197,7 +197,6 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 args.AppendArgument(this.Verbosity.ToString().ToLowerInvariant());
             }
 
-#warning make this handle multiple types
             if (!string.IsNullOrWhiteSpace(this.PackageSource))
             {
                 var packageSource = new PackageSourceId(this.PackageSource!);
