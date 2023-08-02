@@ -39,11 +39,11 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
         {
             if (!string.IsNullOrEmpty(this.PackageSource))
             {
-                var sourceId = new PackageSourceId(this.PackageSource);
-                if (sourceId.Format != PackageSourceIdFormat.Url)
+                var packageSource = new PackageSourceId(this.PackageSource!);
+
+                if (packageSource.Format == PackageSourceIdFormat.ProGetFeed)
                 {
-                    this.LogDebug($"Resolving package source \"{this.PackageSource}\"...");
-                    var source = await AhPackages.GetPackageSourceAsync(sourceId, context, context.CancellationToken);
+                    var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
                     if (source == null)
                     {
                         this.LogError($"Package source \"{this.PackageSource}\" not found.");
@@ -56,6 +56,19 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                     }
 
                     this.PackageSource = nuuget.SourceUrl;
+                }
+                else if (packageSource.Format == PackageSourceIdFormat.SecureResource)
+                {
+                    if (!context.TryGetSecureResource(packageSource.GetResourceName(), out var resource) || resource is not NuGetPackageSource nps)
+                    {
+                        this.LogError($"Package source \"{this.PackageSource}\" not found or is not a NuGetPackageSource.");
+                        return;
+                    }
+                    this.PackageSource =  nps.ApiEndpointUrl;
+                }
+                else if (packageSource.Format == PackageSourceIdFormat.Url)
+                {
+                    this.PackageSource = packageSource.GetUrl();
                 }
             }
 
