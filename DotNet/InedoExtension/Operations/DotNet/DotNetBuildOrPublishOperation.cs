@@ -1,9 +1,11 @@
 ﻿using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
+using Inedo.ExecutionEngine.Executer;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Extensions.DotNet.SuggestionProviders;
@@ -17,6 +19,8 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
     [DefaultProperty(nameof(ProjectPath))]
     public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereOperation
     {
+        private static readonly LazyRegex ErrorRegex = new(@":\s*error\b", RegexOptions.Compiled);
+
         protected DotNetBuildOrPublishOperation()
         {
         }
@@ -77,13 +81,43 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         [Description("Sets the ContinuousIntegrationBuild MSBuild flag, which is recommended for all official (non-local) builds.")]
         public bool ContinuousIntegrationBuild { get; set; } = true;
 
+        [ScriptAlias("ImageBasedService")]
+        [SuggestableValue(typeof(DotNetIBSSuggestionProvider))]
+        public string ImageBasedService { get; set; }
+
         protected abstract string CommandName { get; }
+
+        private bool UseContainer => !string.IsNullOrEmpty(this.ImageBasedService);
+
+        protected override void LogProcessOutput(string text)
+        {
+            if (this.UseContainer && ErrorRegex.IsMatch(text))
+                this.Log(MessageLevel.Error, text);
+            else
+                base.LogProcessOutput(text);
+        }
+        protected override void LogProcessError(string text)
+        {
+            if (this.UseContainer)
+                this.LogDebug(text);
+            else
+                base.LogProcessError(text);
+        }
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
         {
-            var projectPath = context.ResolvePath(this.ProjectPath);
+            Func<string, string> resolvePath = context.ResolvePath;
+            DockerHostShim docker = null;
+            if (this.UseContainer)
+            {
+                this.LogDebug($"Performing containerized build using \"{this.ImageBasedService}\" image based service.");
+                docker = await DockerHostShim.CreateAsync(context);
+                resolvePath = docker.ResolveContainerPath;
+            }
 
-            var dotNetPath = await this.GetDotNetExePath(context, projectPath);
+            var projectPath = resolvePath(this.ProjectPath);
+
+            var dotNetPath = this.UseContainer ? "dotnet" : await this.GetDotNetExePath(context, projectPath);
             if (string.IsNullOrEmpty(dotNetPath))
                 return;
 
@@ -111,7 +145,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             if (!string.IsNullOrWhiteSpace(this.Output))
             {
                 args.Append("--output ");
-                args.AppendArgument(context.ResolvePath(this.Output));
+                args.AppendArgument(resolvePath(this.Output));
             }
 
             if (!string.IsNullOrWhiteSpace(this.Version))
@@ -163,7 +197,6 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                 args.AppendArgument(this.Verbosity.ToString().ToLowerInvariant());
             }
 
-#warning make this handle multiple types
             if (!string.IsNullOrWhiteSpace(this.PackageSource))
             {
                 var packageSource = new PackageSourceId(this.PackageSource!);
@@ -219,15 +252,33 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             bool errNothingToDo = false, errMsWebAppTargets = false, errMSB4062_tasks = false;
 
             this.MessageLogged += DotNetBuildOrPublishOperation_MessageLogged;
-            int res = await this.ExecuteCommandLineAsync(
-                context,
-                new RemoteProcessStartInfo
-                {
-                    FileName = dotNetPath,
-                    Arguments = fullArgs,
-                    WorkingDirectory = context.WorkingDirectory
-                }
-            );
+
+            int res;
+
+            var startInfo = new RemoteProcessStartInfo
+            {
+                FileName = dotNetPath,
+                Arguments = fullArgs,
+                WorkingDirectory = context.WorkingDirectory
+            };
+
+            if (docker == null)
+            {
+                res = await this.ExecuteCommandLineAsync(context, startInfo);
+            }
+            else
+            {
+                res = await docker.ExecuteInContainerAsync(
+                    new ContainerStartInfoShim(
+                        this.ImageBasedService,
+                        startInfo,
+                        OutputDataReceived: this.LogProcessOutput,
+                        ErrorDataReceived: this.LogProcessError
+                    ),
+                    context.CancellationToken
+                );
+            }
+
             this.MessageLogged -= DotNetBuildOrPublishOperation_MessageLogged;
 
             if (res == 0)
@@ -284,7 +335,6 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                     errMSB4062_tasks = true;
             }
         }
-
         protected virtual void AppendAdditionalArguments(StringBuilder args)
         {
         }
@@ -314,5 +364,47 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         }
 
         Task<int> IVSWhereOperation.ExecuteCommandLineAsync(IOperationExecutionContext context, RemoteProcessStartInfo startInfo) => this.ExecuteCommandLineAsync(context, startInfo);
+
+        private sealed class DockerHostShim
+        {
+            private readonly object host;
+
+            private DockerHostShim(object host) => this.host = host;
+
+            public static async Task<DockerHostShim> CreateAsync(IOperationExecutionContext context)
+            {
+                try
+                {
+                    return (await CreateInternalAsync(context)) ?? throw new ExecutionFailureException($"Server {context.ServerName} does not have a Docker engine.");
+                }
+                catch
+                {
+                    throw new ExecutionFailureException($"Containerized builds are not supported in this version of {SDK.ProductName}.");
+                }
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            public string ResolveContainerPath(string relativePath) => ((IDockerHost)this.host).ResolveContainerPath(relativePath);
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            public Task<int> ExecuteInContainerAsync(ContainerStartInfoShim containerStartInfo, CancellationToken cancellationToken = default)
+            {
+                return ((IDockerHost)this.host).ExecuteInContainerAsync(
+                    new ContainerStartInfo(containerStartInfo.Image, containerStartInfo.StartInfo, containerStartInfo.MapExecutionDirectory, OutputDataReceived: containerStartInfo.OutputDataReceived, ErrorDataReceived: containerStartInfo.ErrorDataReceived),
+                    cancellationToken
+                );
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private static async Task<DockerHostShim> CreateInternalAsync(IOperationExecutionContext context)
+            {
+                var docker = await context.TryGetServiceAsync<IDockerHost>();
+                if (docker != null)
+                    return new DockerHostShim(docker);
+                else
+                    return null;
+            }
+        }
+
+        private sealed record ContainerStartInfoShim(string Image, RemoteProcessStartInfo StartInfo, bool MapExecutionDirectory = true, Action<string> OutputDataReceived = null, Action<string> ErrorDataReceived = null);
     }
 }

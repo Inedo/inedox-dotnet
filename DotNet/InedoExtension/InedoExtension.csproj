@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Inedo.SDK" Version="2.2.0">
+    <PackageReference Include="Inedo.SDK" Version="2.2.4-ci.2">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Jdt" Version="0.9.23" />
