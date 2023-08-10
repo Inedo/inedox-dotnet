@@ -120,7 +120,7 @@ DotNet::Tool dotnetsay
                             return;
                         }
 
-                        sb.Append("--source ");
+                        sb.Append("--add-source ");
                         sb.AppendArgument(nuuget.SourceUrl);
                     }
                     else if (packageSource.Format == PackageSourceIdFormat.SecureResource)
@@ -130,12 +130,12 @@ DotNet::Tool dotnetsay
                             this.LogError($"Package source \"{this.PackageSource}\" not found or is not a NuGetPackageSource.");
                             return;
                         }
-                        sb.Append("--source ");
+                        sb.Append("--add-source ");
                         sb.AppendArgument(nps.ApiEndpointUrl);
                     }
                     else if (packageSource.Format == PackageSourceIdFormat.Url)
                     {
-                        sb.Append("--source ");
+                        sb.Append("--add-source ");
                         sb.AppendArgument(packageSource.GetUrl());
                     }
                 }
