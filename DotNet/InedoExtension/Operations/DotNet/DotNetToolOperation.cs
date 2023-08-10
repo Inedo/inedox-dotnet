@@ -231,9 +231,9 @@ DotNet::Tool dotnetsay
             }
 
             if (this.Global)
-                sb.Append(" --global");
+                sb.Append(" --global ");
             else
-                sb.Append(" --local");
+                sb.Append(" --local ");
         }
         private async Task<List<ToolInfo>> GetToolInfoAsync(string dotNetPath, IOperationExecutionContext context, bool global)
         {
@@ -242,7 +242,7 @@ DotNet::Tool dotnetsay
                 new RemoteProcessStartInfo
                 {
                     FileName = dotNetPath,
-                    Arguments = "tool list " + (global ? " --global" : " --local"),
+                    Arguments = "tool list " + (global ? " --global " : " --local "),
                     WorkingDirectory = context.WorkingDirectory
                 }
             );
