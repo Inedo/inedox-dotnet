@@ -9,6 +9,7 @@ using Inedo.Extensibility.Operations;
 using Inedo.Extensions.Credentials;
 using Inedo.Extensions.PackageSources;
 using Inedo.Extensions.SecureResources;
+using Inedo.ProGet;
 using Inedo.Web;
 
 #nullable enable
@@ -73,7 +74,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
             }
             
             if (!string.IsNullOrEmpty(this.PackageSource))
-                this.ResolvePackageSource(context);
+                await this.ResolvePackageSourceAsync(context, context.CancellationToken);
 
             if (string.IsNullOrEmpty(this.ApiEndpointUrl))
             {
@@ -141,17 +142,14 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                     {
                         this.LogInformation(
                             $"Although NuGet exited with error code {exitCode} and logged an error, it also reported that the package was successfully pushed. " +
-                            $"This seems to be the known NuGet bug, (https://github.com/NuGet/Home/issues/10645), so the error is being ignored.");
+                            "This seems to be the known NuGet bug, (https://github.com/NuGet/Home/issues/10645), so the error is being ignored.");
                         exitCode = 0;
                     }
                     else
                         this.LogError($"NuGet exited with code {exitCode}");
                 }
-                    
-
             }
         }
-
 
         protected override ExtendedRichDescription GetDescription(IOperationConfiguration config)
         {
@@ -167,7 +165,7 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
             );
         }
 
-        private void ResolvePackageSource(ICredentialResolutionContext context)
+        private async Task ResolvePackageSourceAsync(ICredentialResolutionContext context, CancellationToken cancellationToken)
         {
             this.LogDebug($"Using package source: {this.PackageSource}");
 
@@ -218,10 +216,12 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                     if (SecureCredentials.TryCreate(packageSource.GetProGetServiceCredentialName(), context) is not ProGetServiceCredentials creds)
                         throw new ExecutionFailureException($"{this.PackageSource} is not valid.");
 
+                    // Feed may be either NuGet v2 or v3. Make sure to use appropriate API URL.
+                    apiUrl = await GetFeedEndpointUrlAsync(packageSource.GetFeedName(), creds, cancellationToken);
                     apiKey = creds.APIKey;
                     userName = creds.UserName;
                     password = creds.Password;
-                    apiUrl = $"{creds.ServiceUrl!.TrimEnd('/')}/nuget/{Uri.EscapeDataString(packageSource.GetFeedName())}";
+                    apiUrl ??= $"{creds.ServiceUrl!.TrimEnd('/')}/nuget/{Uri.EscapeDataString(packageSource.GetFeedName())}";
                     break;
 
                 case PackageSourceIdFormat.Url:
@@ -256,6 +256,24 @@ namespace Inedo.Extensions.DotNet.Operations.NuGet
                 builder.Password = "XXXXX";
                 displayUrl = builder.ToString();
             }
+        }
+
+        private static async Task<string?> GetFeedEndpointUrlAsync(string feedName, ProGetServiceCredentials credentials, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var client = new ProGetClient(credentials);
+                await foreach (var feed in client.GetFeedsAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    if (string.Equals(feed.Name, feedName, StringComparison.OrdinalIgnoreCase))
+                        return feed.EndpointUrl;
+                }
+            }
+            catch
+            {
+            }
+
+            return null;
         }
     }
 }
