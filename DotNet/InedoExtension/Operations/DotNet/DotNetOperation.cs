@@ -69,7 +69,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
             if (logErrorIfNotFound)
             {
-                this.LogError("Could find dotnet.exe on this server.");
+                this.LogError("Could find dotnet on this server.");
                 this.LogInformation(
                     "[TIP] This error usually means that the .NET SDK is not installed on this server. Try downloading/installing .NET SDK " +
                     "on this server or go to the advanced tab to ensure that dotnet is installed when running this operation/script, and retry the build. " +
@@ -108,6 +108,29 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             }
             else
             {
+                bool inPath = false;
+                try
+                {
+                    await using var process = remoteProcess.CreateProcess(
+                        new RemoteProcessStartInfo
+                        {
+                            FileName = "dotnet",
+                            Arguments = "--info"
+                        }
+                    );
+
+                    await process.StartAsync(context.CancellationToken);
+
+                    await process.WaitAsync(context.CancellationToken);
+                    inPath = process.ExitCode == 0;
+                }
+                catch
+                {
+                }
+
+                if (inPath)
+                    yield return "dotnet";
+
                 var homeDir = await remoteProcess.GetEnvironmentVariableValueAsync("HOME");
                 if (!string.IsNullOrWhiteSpace(homeDir))
                 {

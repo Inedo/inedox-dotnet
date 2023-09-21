@@ -203,12 +203,21 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
                 if (packageSource.Format == PackageSourceIdFormat.ProGetFeed)
                 {
-                    var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
+                    IPackageSource source = null;
+                    try
+                    {
+                        source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
+                    }
+                    catch
+                    {
+                    }
+
                     if (source == null)
                     {
                         this.LogError($"Package source \"{this.PackageSource}\" not found.");
                         return;
                     }
+
                     if (source is not INuGetPackageSource nuuget)
                     {
                         this.LogError($"Package source \"{this.PackageSource}\" is a {source.GetType().Name} source; it must be a NuGet source for use with this operation.");
