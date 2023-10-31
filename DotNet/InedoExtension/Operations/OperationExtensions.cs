@@ -22,6 +22,7 @@ internal static class OperationExtensions
         }
 
         var path = fileOps.CombinePath(await fileOps.GetBaseWorkingDirectoryAsync(), ".dotnet-ext");
+        await fileOps.CreateDirectoryAsync(path);
         var vsWherePath = fileOps.CombinePath(path, "vswhere.exe");
         using (var src = typeof(DotNetBuildOrPublishOperation).Assembly.GetManifestResourceStream("Inedo.Extensions.DotNet.vswhere.exe")!)
         {
