@@ -1,13 +1,10 @@
 ﻿using System.ComponentModel;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Xml.Linq;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
+using Inedo.Extensions.DotNet.Operations.DotNet;
 using Inedo.IO;
 
 namespace Inedo.Extensions.DotNet.Operations
@@ -16,7 +13,7 @@ namespace Inedo.Extensions.DotNet.Operations
     [DisplayName("Execute VSTest Tests")]
     [Description("Runs VSTest unit tests on a specified test project, recommended for tests in VS 2012 and later.")]
     [ScriptNamespace("WindowsSDK")]
-    public sealed class VSTestOperation : ExecuteOperation
+    public sealed class VSTestOperation : ExecuteOperation, IVSWhereOperation
     {
         [Required]
         [ScriptAlias("TestContainer")]
@@ -140,57 +137,8 @@ namespace Inedo.Extensions.DotNet.Operations
             }
         }
 
-        private async Task<string> FindVsTestConsoleWithVsWhereAsync(IOperationExecutionContext context)
-        {
-            var remoteMethodEx = await context.Agent.GetServiceAsync<IRemoteMethodExecuter>().ConfigureAwait(false);
+        private Task<string> FindVsTestConsoleWithVsWhereAsync(IOperationExecutionContext context) => this.FindUsingVSWhereAsync(context, @"-products * -nologo -format xml -utf8 -latest -sort -requiresAny -requires Microsoft.VisualStudio.PackageGroup.TestTools.Core Microsoft.VisualStudio.Component.TestTools.BuildTools -find **\vstest.console.exe");
 
-            string vsWherePath = await remoteMethodEx.InvokeFuncAsync(RemoteGetVsWherePath).ConfigureAwait(false);
-            string outputFile = await remoteMethodEx.InvokeFuncAsync(Path.GetTempFileName).ConfigureAwait(false);
-
-            // vswhere.exe documentation: https://github.com/Microsoft/vswhere/wiki
-            // component IDs documented here: https://docs.microsoft.com/en-us/visualstudio/install/workload-and-component-ids
-            var startInfo = new RemoteProcessStartInfo
-            {
-                FileName = vsWherePath,
-                WorkingDirectory = Path.GetDirectoryName(vsWherePath),
-                Arguments = @"-products * -nologo -format xml -utf8 -latest -sort -requiresAny -requires Microsoft.VisualStudio.PackageGroup.TestTools.Core Microsoft.VisualStudio.Component.TestTools.BuildTools -find **\vstest.console.exe",
-                OutputFileName = outputFile
-            };
-
-            this.LogDebug("Process: " + startInfo.FileName);
-            this.LogDebug("Arguments: " + startInfo.Arguments);
-            this.LogDebug("Working directory: " + startInfo.WorkingDirectory);
-
-            await this.ExecuteCommandLineAsync(context, startInfo).ConfigureAwait(false);
-
-            var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>().ConfigureAwait(false);
-
-            XDocument xdoc;
-            using (var file = await fileOps.OpenFileAsync(outputFile, FileMode.Open, FileAccess.Read).ConfigureAwait(false))
-            {
-                xdoc = XDocument.Load(file);
-            }
-
-            var files = from f in xdoc.Root.Descendants("file")
-                        let file = f.Value
-                        select file;
-
-            var filePath = files.FirstOrDefault();
-
-            if (string.IsNullOrWhiteSpace(filePath))
-                return null;
-
-            return filePath;
-        }
-
-        private string RemoteGetVsWherePath()
-        {
-            string vsWherePath = PathEx.Combine(
-                Path.GetDirectoryName(typeof(VSTestOperation).Assembly.Location),
-                "vswhere.exe"
-            );
-
-            return vsWherePath;
-        }
+        Task<int> IVSWhereOperation.ExecuteCommandLineAsync(IOperationExecutionContext context, RemoteProcessStartInfo startInfo) => this.ExecuteCommandLineAsync(context, startInfo);
     }
 }
