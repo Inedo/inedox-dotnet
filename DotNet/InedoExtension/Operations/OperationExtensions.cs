@@ -27,7 +27,7 @@ internal static class OperationExtensions
             if (assemblyDir == null)
                 return null;
 
-            var vsWherePath =  PathEx.Combine(assemblyDir, "vshwere.exe");
+            var vsWherePath =  PathEx.Combine(assemblyDir, "vswhere.exe");
             var outputFile = await executer.InvokeFuncAsync(Path.GetTempFileName).ConfigureAwait(false);
 
             // vswhere.exe documentation: https://github.com/Microsoft/vswhere/wiki
