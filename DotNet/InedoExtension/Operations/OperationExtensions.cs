@@ -11,7 +11,7 @@ namespace Inedo.Extensions.DotNet.Operations;
 
 internal static class OperationExtensions
 {
-    public static async Task<string?> FindUsingVSWhereAsync(this IVSWhereOperation operation, IOperationExecutionContext context, string args)
+    public static async Task<string?> FindUsingVSWhereAsync(this IVSWhereOperation operation, IOperationExecutionContext context, string args, bool includeFileName = false)
     {
         var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
 
@@ -60,7 +60,7 @@ internal static class OperationExtensions
 
                 var filePath = files.FirstOrDefault();
 
-                toolPath = string.IsNullOrWhiteSpace(filePath) ? null : PathEx.GetDirectoryName(filePath);
+                toolPath = string.IsNullOrWhiteSpace(filePath) ? null : includeFileName ? filePath : PathEx.GetDirectoryName(filePath);
             }
 
             try

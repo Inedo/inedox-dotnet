@@ -111,7 +111,7 @@ namespace Inedo.Extensions.DotNet.Operations
             if (string.IsNullOrWhiteSpace(this.VsTestPath))
             {
                 this.LogDebug("$VsTestExePath variable not configured and VsTestPath not specified, attempting to find using vswhere.exe...");
-                var path = await this.FindVsTestConsoleWithVsWhereAsync(context).ConfigureAwait(false);
+                var path = await this.FindUsingVSWhereAsync(context, @"-products * -nologo -format xml -utf8 -latest -sort -requiresAny -requires Microsoft.VisualStudio.PackageGroup.TestTools.Core Microsoft.VisualStudio.Component.TestTools.BuildTools -find **\vstest.console.exe", true).ConfigureAwait(false);
 
                 if (path != null)
                 {
@@ -137,7 +137,6 @@ namespace Inedo.Extensions.DotNet.Operations
             }
         }
 
-        private Task<string> FindVsTestConsoleWithVsWhereAsync(IOperationExecutionContext context) => this.FindUsingVSWhereAsync(context, @"-products * -nologo -format xml -utf8 -latest -sort -requiresAny -requires Microsoft.VisualStudio.PackageGroup.TestTools.Core Microsoft.VisualStudio.Component.TestTools.BuildTools -find **\vstest.console.exe");
 
         Task<int> IVSWhereOperation.ExecuteCommandLineAsync(IOperationExecutionContext context, RemoteProcessStartInfo startInfo) => this.ExecuteCommandLineAsync(context, startInfo);
     }
