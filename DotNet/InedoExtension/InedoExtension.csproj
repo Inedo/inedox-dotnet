@@ -3,7 +3,7 @@
     <AssemblyName>DotNet</AssemblyName>
     <RootNamespace>Inedo.Extensions.DotNet</RootNamespace>
     <OutputType>Library</OutputType>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,7 +12,7 @@
     <None Remove="vswhere.exe" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Inedo.SDK" Version="2.2.4">
+    <PackageReference Include="Inedo.SDK" Version="3.1.0-ci.7">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Jdt" Version="0.9.23" />

@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel;
 using System.Text;
-using System.Threading.Tasks;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
 using Inedo.Extensibility;
@@ -10,114 +9,113 @@ using Inedo.Extensions.PackageSources;
 using Inedo.Extensions.SecureResources;
 using Inedo.Web;
 
-namespace Inedo.Extensions.DotNet.Operations.NuGet
+namespace Inedo.Extensions.DotNet.Operations.NuGet;
+
+[ScriptNamespace("NuGet")]
+[ScriptAlias("Restore-Packages")]
+[DisplayName("Restore NuGet Packages")]
+[Description("Restores all packages in a specified solution, project, or packages.config file.")]
+public sealed class RestoreNuGetPackagesOperation : NuGetOperation
 {
-    [ScriptNamespace("NuGet")]
-    [ScriptAlias("Restore-Packages")]
-    [DisplayName("Restore NuGet Packages")]
-    [Description("Restores all packages in a specified solution, project, or packages.config file.")]
-    public sealed class RestoreNuGetPackagesOperation : NuGetOperation
+    [ScriptAlias("Target")]
+    [DisplayName("Target")]
+    [Description("The target solution, project, or packages.config file used to restore packages, or directory containing a solution.")]
+    [PlaceholderText("$WorkingDirectory")]
+    public string Target { get; set; }
+    [Category("Advanced")]
+    [ScriptAlias("PackagesDirectory")]
+    [DisplayName("Packages directory")]
+    [PlaceholderText("default")]
+    public string PackagesDirectory { get; set; }
+    [ScriptAlias("Source")]
+    [ScriptAlias("SourceName", Obsolete = true)]
+    [DisplayName("Package source")]
+    [Description("If specified, this NuGet package source will be used to restore packages.")]
+    [SuggestableValue(typeof(NuGetPackageSourceSuggestionProvider))]
+    public string PackageSource { get; set; }
+
+    public override async Task ExecuteAsync(IOperationExecutionContext context)
     {
-        [ScriptAlias("Target")]
-        [DisplayName("Target")]
-        [Description("The target solution, project, or packages.config file used to restore packages, or directory containing a solution.")]
-        [PlaceholderText("$WorkingDirectory")]
-        public string Target { get; set; }
-        [Category("Advanced")]
-        [ScriptAlias("PackagesDirectory")]
-        [DisplayName("Packages directory")]
-        [PlaceholderText("default")]
-        public string PackagesDirectory { get; set; }
-        [ScriptAlias("Source")]
-        [ScriptAlias("SourceName", Obsolete = true)]
-        [DisplayName("Package source")]
-        [Description("If specified, this NuGet package source will be used to restore packages.")]
-        [SuggestableValue(typeof(NuGetPackageSourceSuggestionProvider))]
-        public string PackageSource { get; set; }
-
-        public override async Task ExecuteAsync(IOperationExecutionContext context)
+        if (!string.IsNullOrEmpty(this.PackageSource))
         {
-            if (!string.IsNullOrEmpty(this.PackageSource))
+            var packageSource = new PackageSourceId(this.PackageSource!);
+
+            if (packageSource.Format == PackageSourceIdFormat.ProGetFeed)
             {
-                var packageSource = new PackageSourceId(this.PackageSource!);
+                var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
+                if (source == null)
+                {
+                    this.LogError($"Package source \"{this.PackageSource}\" not found.");
+                    return;
+                }
+                if (source is not INuGetPackageSource nuuget)
+                {
+                    this.LogError($"Package source \"{this.PackageSource}\" is a {source.GetType().Name} source; it must be a NuGet source for use with this operation.");
+                    return;
+                }
 
-                if (packageSource.Format == PackageSourceIdFormat.ProGetFeed)
-                {
-                    var source = await AhPackages.GetPackageSourceAsync(this.PackageSource, context, context.CancellationToken);
-                    if (source == null)
-                    {
-                        this.LogError($"Package source \"{this.PackageSource}\" not found.");
-                        return;
-                    }
-                    if (source is not INuGetPackageSource nuuget)
-                    {
-                        this.LogError($"Package source \"{this.PackageSource}\" is a {source.GetType().Name} source; it must be a NuGet source for use with this operation.");
-                        return;
-                    }
-
-                    this.PackageSource = nuuget.SourceUrl;
-                }
-                else if (packageSource.Format == PackageSourceIdFormat.SecureResource)
-                {
-                    if (!context.TryGetSecureResource(packageSource.GetResourceName(), out var resource) || resource is not NuGetPackageSource nps)
-                    {
-                        this.LogError($"Package source \"{this.PackageSource}\" not found or is not a NuGetPackageSource.");
-                        return;
-                    }
-                    this.PackageSource =  nps.ApiEndpointUrl;
-                }
-                else if (packageSource.Format == PackageSourceIdFormat.Url)
-                {
-                    this.PackageSource = packageSource.GetUrl();
-                }
+                this.PackageSource = nuuget.SourceUrl;
             }
-
-            var nugetInfo = await this.GetNuGetInfoAsync(context).ConfigureAwait(false);
-
-            var target = context.ResolvePath(this.Target);
-            var buffer = new StringBuilder();
-
-            this.LogInformation($"Restoring packages for {target}...");
-            if (nugetInfo.IsNuGetExe)
+            else if (packageSource.Format == PackageSourceIdFormat.SecureResource)
             {
-                buffer.Append("restore");
-                if (!string.IsNullOrEmpty(target))
-                    buffer.Append($" \"{TrimDirectorySeparator(target)}\"");
-
-                if (!string.IsNullOrEmpty(this.PackagesDirectory))
-                    buffer.Append($" -PackagesDirectory \"{TrimDirectorySeparator(context.ResolvePath(this.PackagesDirectory))}\"");
-
-                if (!string.IsNullOrWhiteSpace(this.PackageSource))
-                    buffer.Append($" -Source \"{this.PackageSource}\"");
+                if (!context.TryGetSecureResource(SecureResourceType.General, packageSource.GetResourceName(), out var resource) || resource is not NuGetPackageSource nps)
+                {
+                    this.LogError($"Package source \"{this.PackageSource}\" not found or is not a NuGetPackageSource.");
+                    return;
+                }
+                this.PackageSource =  nps.ApiEndpointUrl;
             }
-            else
+            else if (packageSource.Format == PackageSourceIdFormat.Url)
             {
-                buffer.Append("restore");
-                if (!string.IsNullOrEmpty(target))
-                    buffer.Append($" \"{TrimDirectorySeparator(target)}\"");
-
-                if (!string.IsNullOrEmpty(this.PackagesDirectory))
-                    buffer.Append($" --packages \"{TrimDirectorySeparator(context.ResolvePath(this.PackagesDirectory))}\"");
-
-                if (!string.IsNullOrWhiteSpace(this.PackageSource))
-                    buffer.Append($" --source \"{this.PackageSource}\"");
+                this.PackageSource = packageSource.GetUrl();
             }
-
-            var exitCode = await this.ExecuteNuGetAsync(context, nugetInfo, buffer.ToString(), null); 
-            if (exitCode != 0)
-                this.LogError($"NuGet exited with code {exitCode}");
-            
-            this.LogInformation("Done restoring packages.");
         }
 
-        protected override ExtendedRichDescription GetDescription(IOperationConfiguration config)
+        var nugetInfo = await this.GetNuGetInfoAsync(context).ConfigureAwait(false);
+
+        var target = context.ResolvePath(this.Target);
+        var buffer = new StringBuilder();
+
+        this.LogInformation($"Restoring packages for {target}...");
+        if (nugetInfo.IsNuGetExe)
         {
-            return new ExtendedRichDescription(
-                new RichDescription(
-                    "Restore NuGet packages for ",
-                    new DirectoryHilite(config[nameof(this.Target)])
-                )
-            );
+            buffer.Append("restore");
+            if (!string.IsNullOrEmpty(target))
+                buffer.Append($" \"{TrimDirectorySeparator(target)}\"");
+
+            if (!string.IsNullOrEmpty(this.PackagesDirectory))
+                buffer.Append($" -PackagesDirectory \"{TrimDirectorySeparator(context.ResolvePath(this.PackagesDirectory))}\"");
+
+            if (!string.IsNullOrWhiteSpace(this.PackageSource))
+                buffer.Append($" -Source \"{this.PackageSource}\"");
         }
+        else
+        {
+            buffer.Append("restore");
+            if (!string.IsNullOrEmpty(target))
+                buffer.Append($" \"{TrimDirectorySeparator(target)}\"");
+
+            if (!string.IsNullOrEmpty(this.PackagesDirectory))
+                buffer.Append($" --packages \"{TrimDirectorySeparator(context.ResolvePath(this.PackagesDirectory))}\"");
+
+            if (!string.IsNullOrWhiteSpace(this.PackageSource))
+                buffer.Append($" --source \"{this.PackageSource}\"");
+        }
+
+        var exitCode = await this.ExecuteNuGetAsync(context, nugetInfo, buffer.ToString(), null); 
+        if (exitCode != 0)
+            this.LogError($"NuGet exited with code {exitCode}");
+        
+        this.LogInformation("Done restoring packages.");
+    }
+
+    protected override ExtendedRichDescription GetDescription(IOperationConfiguration config)
+    {
+        return new ExtendedRichDescription(
+            new RichDescription(
+                "Restore NuGet packages for ",
+                new DirectoryHilite(config[nameof(this.Target)])
+            )
+        );
     }
 }

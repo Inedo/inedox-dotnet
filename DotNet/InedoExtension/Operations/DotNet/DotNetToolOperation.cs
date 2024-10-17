@@ -5,6 +5,7 @@ using Inedo.Diagnostics;
 using Inedo.Documentation;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
+using Inedo.Extensibility.SecureResources;
 using Inedo.Extensions.PackageSources;
 using Inedo.Extensions.SecureResources;
 using Inedo.IO;
@@ -125,7 +126,7 @@ DotNet::Tool dotnetsay
                     }
                     else if (packageSource.Format == PackageSourceIdFormat.SecureResource)
                     {
-                        if (!context.TryGetSecureResource(packageSource.GetResourceName(), out var resource) || resource is not NuGetPackageSource nps)
+                        if (!context.TryGetSecureResource(SecureResourceType.General, packageSource.GetResourceName(), out var resource) || resource is not NuGetPackageSource nps)
                         {
                             this.LogError($"Package source \"{this.PackageSource}\" not found or is not a NuGetPackageSource.");
                             return;
