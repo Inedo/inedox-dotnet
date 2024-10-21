@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Inedo.Agents;
@@ -56,6 +57,13 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
     [ScriptAlias("Output")]
     [Description("Specifies an output directory for the build.")]
     public string Output { get; set; }
+
+    [Category("Advanced")]
+    [ScriptAlias("UseTemporarySourceForNuGetRestore")]
+    [DisplayName("Use Temporary Source For NuGet Restore (ProGet Feeds Only)")]
+    [DefaultValue(true)]
+    public bool UseTemporarySourceForNuGetRestore { get; set; } = true;
+
     [Category("Advanced")]
     [ScriptAlias("VSToolsPath")]
     [PlaceholderText("not set")]
@@ -107,11 +115,12 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
     public override async Task ExecuteAsync(IOperationExecutionContext context)
     {
         Func<string, string> resolvePath = context.ResolvePath;
-        DockerHostShim docker = null;
+        IDockerHost docker = null;
+        ProGetNuGetSource progetNugetSource = null;
         if (this.UseContainer)
         {
             this.LogDebug($"Performing containerized build using \"{this.ImageBasedService}\" image based service.");
-            docker = await DockerHostShim.CreateAsync(context);
+            docker = await context.TryGetServiceAsync<IDockerHost>();
             resolvePath = docker.ResolveContainerPath;
         }
 
@@ -224,8 +233,22 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
                     return;
                 }
 
-                args.Append("--source ");
-                args.AppendArgument(nuuget.SourceUrl);
+                if (this.UseTemporarySourceForNuGetRestore && (!string.IsNullOrWhiteSpace(nuuget.ApiKey) || string.IsNullOrWhiteSpace(nuuget.Password)))
+                {
+                    progetNugetSource = new ProGetNuGetSource
+                    {
+                        Url = nuuget.SourceUrl,
+                        UserName = string.IsNullOrWhiteSpace(nuuget.ApiKey) ? nuuget.UserName : null,
+                        Password = nuuget.ApiKey ?? nuuget.Password
+                    };
+
+                    args.Append("--source ");
+                    args.AppendArgument(progetNugetSource.SourceName);
+                }
+                else { 
+                    args.Append("--source ");
+                    args.AppendArgument(nuuget.SourceUrl);
+                }
             }
             else if(packageSource.Format == PackageSourceIdFormat.SecureResource)
             {
@@ -273,12 +296,40 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
 
         if (docker == null)
         {
+            if (progetNugetSource != null)
+                await this.ExecuteCommandLineAsync(context, new RemoteProcessStartInfo
+                {
+                    FileName = dotNetPath,
+                    Arguments = $"nuget add source {progetNugetSource.Url} -n {progetNugetSource.SourceName} -u {progetNugetSource.UserName} -p {progetNugetSource.Password}",
+                    WorkingDirectory = context.WorkingDirectory,
+                });
             res = await this.ExecuteCommandLineAsync(context, startInfo);
+            if (progetNugetSource != null)
+                await this.ExecuteCommandLineAsync(context, new RemoteProcessStartInfo
+                {
+                    FileName = dotNetPath,
+                    Arguments = $"nuget remove source {progetNugetSource.SourceName}",
+                    WorkingDirectory = context.WorkingDirectory
+                });
         }
         else
         {
+            if (progetNugetSource != null)
+                await docker.ExecuteInContainerAsync(
+                    new ContainerStartInfo(
+                        this.ImageBasedService,
+                        new RemoteProcessStartInfo
+                        {
+                            FileName = dotNetPath,
+                            Arguments = $"nuget add source {progetNugetSource.Url} -n {progetNugetSource.SourceName} -u {progetNugetSource.UserName} -p {progetNugetSource.Password}",
+                            WorkingDirectory = context.WorkingDirectory
+                        },
+                        OutputDataReceived: this.LogProcessOutput,
+                        ErrorDataReceived: this.LogProcessError),
+                    context.CancellationToken
+                );
             res = await docker.ExecuteInContainerAsync(
-                new ContainerStartInfoShim(
+                new ContainerStartInfo(
                     this.ImageBasedService,
                     startInfo,
                     OutputDataReceived: this.LogProcessOutput,
@@ -286,6 +337,20 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
                 ),
                 context.CancellationToken
             );
+            if (progetNugetSource != null)
+                await docker.ExecuteInContainerAsync(
+                    new ContainerStartInfo(
+                        this.ImageBasedService,
+                        new RemoteProcessStartInfo
+                        {
+                            FileName = dotNetPath,
+                            Arguments = $"nuget remove source {progetNugetSource.SourceName}",
+                            WorkingDirectory = context.WorkingDirectory
+                        },
+                        OutputDataReceived: this.LogProcessOutput,
+                        ErrorDataReceived: this.LogProcessError),
+                    context.CancellationToken
+                );
         }
 
         this.MessageLogged -= DotNetBuildOrPublishOperation_MessageLogged;
@@ -374,45 +439,11 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
 
     Task<int> IVSWhereOperation.ExecuteCommandLineAsync(IOperationExecutionContext context, RemoteProcessStartInfo startInfo) => this.ExecuteCommandLineAsync(context, startInfo);
 
-    private sealed class DockerHostShim
+    private sealed class ProGetNuGetSource
     {
-        private readonly object host;
-
-        private DockerHostShim(object host) => this.host = host;
-
-        public static async Task<DockerHostShim> CreateAsync(IOperationExecutionContext context)
-        {
-            try
-            {
-                return (await CreateInternalAsync(context)) ?? throw new ExecutionFailureException($"Server {context.ServerName} does not have a Docker engine.");
-            }
-            catch
-            {
-                throw new ExecutionFailureException($"Containerized builds are not supported in this version of {SDK.ProductName}.");
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public string ResolveContainerPath(string relativePath) => ((IDockerHost)this.host).ResolveContainerPath(relativePath);
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public Task<int> ExecuteInContainerAsync(ContainerStartInfoShim containerStartInfo, CancellationToken cancellationToken = default)
-        {
-            return ((IDockerHost)this.host).ExecuteInContainerAsync(
-                new ContainerStartInfo(containerStartInfo.Image, containerStartInfo.StartInfo, containerStartInfo.MapExecutionDirectory, OutputDataReceived: containerStartInfo.OutputDataReceived, ErrorDataReceived: containerStartInfo.ErrorDataReceived),
-                cancellationToken
-            );
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static async Task<DockerHostShim> CreateInternalAsync(IOperationExecutionContext context)
-        {
-            var docker = await context.TryGetServiceAsync<IDockerHost>();
-            if (docker != null)
-                return new DockerHostShim(docker);
-            else
-                return null;
-        }
+        public string Url { get; set; }
+        public string UserName { get; set; }
+        public string Password { get; set; }
+        public string SourceName => "AH" + Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes($"{this.Url}:{this.UserName ?? "api"}:{this.Password}")));
     }
-
-    private sealed record ContainerStartInfoShim(string Image, RemoteProcessStartInfo StartInfo, bool MapExecutionDirectory = true, Action<string> OutputDataReceived = null, Action<string> ErrorDataReceived = null);
 }
