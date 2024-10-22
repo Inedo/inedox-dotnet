@@ -105,7 +105,10 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
     }
     protected override void LogProcessError(string text)
     {
-        if (this.UseContainer)
+        //Ignores dotnet nuget remove source errors, handled below
+        if (text.Contains("error: Unable to find any package source(s) matching name:"))
+            this.LogDebug(text);
+        else if (this.UseContainer)
             this.LogDebug(text);
         else
             base.LogProcessError(text);
@@ -280,11 +283,10 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
         var fullArgs = args.ToString();
         this.LogDebug($"Executing dotnet {fullArgs}...");
 
-        bool errNothingToDo = false, errMsWebAppTargets = false, errMSB4062_tasks = false;
+        bool errNothingToDo = false, errMsWebAppTargets = false, errMSB4062_tasks = false, errSourceAlreadyAdded = false;
 
-        this.MessageLogged += DotNetBuildOrPublishOperation_MessageLogged;
 
-        int res;
+        int res, sourceRes;
 
         var startInfo = new RemoteProcessStartInfo
         {
@@ -293,66 +295,59 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
             WorkingDirectory = context.WorkingDirectory
         };
 
-        if (docker == null)
+
+        if (progetNugetSource != null)
         {
-            if (progetNugetSource != null)
-                await this.ExecuteCommandLineAsync(context, new RemoteProcessStartInfo
-                {
-                    FileName = dotNetPath,
-                    Arguments = $"nuget add source {progetNugetSource.Url} -n {progetNugetSource.SourceName} -u {progetNugetSource.UserName} -p {progetNugetSource.Password}",
-                    WorkingDirectory = context.WorkingDirectory,
-                });
-            res = await this.ExecuteCommandLineAsync(context, startInfo);
-            if (progetNugetSource != null)
-                await this.ExecuteCommandLineAsync(context, new RemoteProcessStartInfo
-                {
-                    FileName = dotNetPath,
-                    Arguments = $"nuget remove source {progetNugetSource.SourceName}",
-                    WorkingDirectory = context.WorkingDirectory
-                });
-        }
-        else
-        {
-            if (progetNugetSource != null)
-                await docker.ExecuteInContainerAsync(
-                    new ContainerStartInfo(
-                        this.ImageBasedService,
-                        new RemoteProcessStartInfo
-                        {
-                            FileName = dotNetPath,
-                            Arguments = $"nuget add source {progetNugetSource.Url} -n {progetNugetSource.SourceName} -u {progetNugetSource.UserName} -p {progetNugetSource.Password}",
-                            WorkingDirectory = context.WorkingDirectory
-                        },
-                        OutputDataReceived: this.LogProcessOutput,
-                        ErrorDataReceived: this.LogProcessError),
-                    context.CancellationToken
-                );
-            res = await docker.ExecuteInContainerAsync(
-                new ContainerStartInfo(
-                    this.ImageBasedService,
-                    startInfo,
-                    OutputDataReceived: this.LogProcessOutput,
-                    ErrorDataReceived: this.LogProcessError
-                ),
-                context.CancellationToken
-            );
-            if (progetNugetSource != null)
-                await docker.ExecuteInContainerAsync(
-                    new ContainerStartInfo(
-                        this.ImageBasedService,
-                        new RemoteProcessStartInfo
-                        {
-                            FileName = dotNetPath,
-                            Arguments = $"nuget remove source {progetNugetSource.SourceName}",
-                            WorkingDirectory = context.WorkingDirectory
-                        },
-                        OutputDataReceived: this.LogProcessOutput,
-                        ErrorDataReceived: this.LogProcessError),
-                    context.CancellationToken
-                );
+            // Attempt to remove temporary source if it already exists
+            await execAsync(new RemoteProcessStartInfo
+            {
+                FileName = dotNetPath,
+                Arguments = $"nuget remove source {progetNugetSource.SourceName}",
+                WorkingDirectory = context.WorkingDirectory
+            });
+
+            this.MessageLogged += NuGetAddSource_MessageLogged;
+            sourceRes = await execAsync(new RemoteProcessStartInfo
+            {
+                FileName = dotNetPath,
+                Arguments = $"nuget add source {progetNugetSource.Url} -n {progetNugetSource.SourceName} -u {progetNugetSource.UserName} -p {progetNugetSource.Password}",
+                WorkingDirectory = context.WorkingDirectory,
+            });
+            this.MessageLogged -= NuGetAddSource_MessageLogged;
+
+            if(sourceRes == 0)
+                this.LogDebug($"dotnet nuget add source {progetNugetSource.SourceName} added successfully (exitcode=0)");
+            else
+            {
+                this.LogError($"dotnet nuget add source did not exit successfully (exitcode={sourceRes}).");
+                if (errSourceAlreadyAdded)
+                    this.LogInformation($"[TIP] The temporary NuGet package source could not be added because another source already exists with the source {progetNugetSource.Url}. " +
+                        "To resolve this, you will have to remove that source from the server, set \"UseTemporarySourceForNuGetRestore = false\" in your build script, or " +
+                        "change your build process to use a NuGet.config.");
+            }
+
         }
 
+        this.MessageLogged += DotNetBuildOrPublishOperation_MessageLogged;
+        res = await execAsync(startInfo);
         this.MessageLogged -= DotNetBuildOrPublishOperation_MessageLogged;
+
+        // If the build errored with a source already added error, do not try to remove it.
+        if (progetNugetSource != null && !errSourceAlreadyAdded)
+        {
+            sourceRes = await execAsync(new RemoteProcessStartInfo
+            {
+                FileName = dotNetPath,
+                Arguments = $"nuget remove source {progetNugetSource.SourceName}",
+                WorkingDirectory = context.WorkingDirectory,
+            });
+
+            if (sourceRes == 0)
+                this.LogDebug($"dotnet nuget remove source {progetNugetSource.SourceName} removed successfully (exitcode=0)");
+            else
+                this.LogWarning($"dotnet nuget remove source did not exit successfully (exitcode={sourceRes}).  You will need to manually remove source {progetNugetSource.SourceName}.");
+        }
+
 
         if (res == 0)
         {
@@ -398,6 +393,12 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
 
         void DotNetBuildOrPublishOperation_MessageLogged(object sender, LogMessageEventArgs e)
         {
+            if (!errSourceAlreadyAdded && e.Message.Contains("The source specified has already been added to the list of available package sources."))
+                errSourceAlreadyAdded = true;
+        }
+
+        void NuGetAddSource_MessageLogged(object sender, LogMessageEventArgs e)
+        {
             if (!errNothingToDo && e.Message.Contains("Nothing to do. None of the projects specified contain packages to restore."))
                 errNothingToDo = true;
 
@@ -407,7 +408,27 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
             if (!errMSB4062_tasks && e.Message.Contains("error MSB4062"))
                 errMSB4062_tasks = true;
         }
+
+        async Task<int> execAsync(RemoteProcessStartInfo startInfo)
+        {
+            if (docker == null)
+            {
+                return await this.ExecuteCommandLineAsync(context, startInfo);
+            }
+            else
+            {
+                return await docker.ExecuteInContainerAsync(
+                    new ContainerStartInfo(
+                        this.ImageBasedService,
+                        startInfo,
+                        OutputDataReceived: this.LogProcessOutput,
+                        ErrorDataReceived: this.LogProcessError),
+                    context.CancellationToken
+                );
+            }
+        }
     }
+
     protected virtual void AppendAdditionalArguments(StringBuilder args)
     {
     }
@@ -443,6 +464,6 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
         public string Url { get; set; }
         public string UserName { get; set; }
         public string Password { get; set; }
-        public string SourceName => "AH" + Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes($"{this.Url}:{this.UserName ?? "api"}:{this.Password}")));
+        public string SourceName => "ah" + Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes($"{this.Url}:{this.UserName ?? "api"}:{this.Password}")));
     }
 }
