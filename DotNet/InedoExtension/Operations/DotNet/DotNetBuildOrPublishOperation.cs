@@ -61,8 +61,7 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
     [Category("Advanced")]
     [ScriptAlias("UseTemporarySourceForNuGetRestore")]
     [DisplayName("Use Temporary Source For NuGet Restore (ProGet Feeds Only)")]
-    [DefaultValue(true)]
-    public bool UseTemporarySourceForNuGetRestore { get; set; } = true;
+    public bool UseTemporarySourceForNuGetRestore { get; set; };
 
     [Category("Advanced")]
     [ScriptAlias("VSToolsPath")]
