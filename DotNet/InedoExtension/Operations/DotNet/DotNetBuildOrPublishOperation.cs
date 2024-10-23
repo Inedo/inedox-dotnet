@@ -235,12 +235,12 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
                     return;
                 }
 
-                if (this.UseTemporarySourceForNuGetRestore && (!string.IsNullOrWhiteSpace(nuuget.ApiKey) || string.IsNullOrWhiteSpace(nuuget.Password)))
+                if (this.UseTemporarySourceForNuGetRestore && (!string.IsNullOrWhiteSpace(nuuget.ApiKey) || !string.IsNullOrWhiteSpace(nuuget.Password)))
                 {
                     progetNugetSource = new ProGetNuGetSource
                     {
                         Url = nuuget.SourceUrl,
-                        UserName = string.IsNullOrWhiteSpace(nuuget.ApiKey) ? nuuget.UserName : null,
+                        UserName = string.IsNullOrWhiteSpace(nuuget.ApiKey) ? nuuget.UserName : "api",
                         Password = nuuget.ApiKey ?? nuuget.Password
                     };
 
@@ -391,13 +391,13 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
             }
         }
 
-        void DotNetBuildOrPublishOperation_MessageLogged(object sender, LogMessageEventArgs e)
+        void NuGetAddSource_MessageLogged(object sender, LogMessageEventArgs e)
         {
             if (!errSourceAlreadyAdded && e.Message.Contains("The source specified has already been added to the list of available package sources."))
                 errSourceAlreadyAdded = true;
         }
 
-        void NuGetAddSource_MessageLogged(object sender, LogMessageEventArgs e)
+        void DotNetBuildOrPublishOperation_MessageLogged (object sender, LogMessageEventArgs e)
         {
             if (!errNothingToDo && e.Message.Contains("Nothing to do. None of the projects specified contain packages to restore."))
                 errNothingToDo = true;
