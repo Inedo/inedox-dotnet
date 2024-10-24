@@ -243,14 +243,10 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
                         UserName = string.IsNullOrWhiteSpace(nuuget.ApiKey) ? nuuget.UserName : "api",
                         Password = nuuget.ApiKey ?? nuuget.Password
                     };
+                }
 
-                    args.Append("--source ");
-                    args.AppendArgument(progetNugetSource.SourceName);
-                }
-                else { 
-                    args.Append("--source ");
-                    args.AppendArgument(nuuget.SourceUrl);
-                }
+                args.Append("--source ");
+                args.AppendArgument(nuuget.SourceUrl);
             }
             else if(packageSource.Format == PackageSourceIdFormat.SecureResource)
             {
