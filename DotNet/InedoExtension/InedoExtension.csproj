@@ -12,7 +12,7 @@
     <None Remove="vswhere.exe" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Inedo.SDK" Version="3.1.0-ci.7">
+    <PackageReference Include="Inedo.SDK" Version="3.1.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Jdt" Version="0.9.23" />
