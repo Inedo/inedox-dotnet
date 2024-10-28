@@ -6,129 +6,129 @@ using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Extensibility.Operations;
 
-namespace Inedo.Extensions.DotNet.Operations
+#nullable enable
+
+namespace Inedo.Extensions.DotNet.Operations;
+
+internal static partial class ContextExtensions
 {
-    internal static class ContextExtensions
+    /// <summary>
+    /// Reads a .trx unit test result file and records its results in BuildMaster.
+    /// </summary>
+    /// <param name="context">The operation context.</param>
+    /// <param name="trxFileName">Full path to the .trx file to process. This must be an absolute path and the file must exist.</param>
+    /// <param name="testGroup">Group to record tests under in BuildMaster. May be null to use the default group.</param>
+    public static async Task RecordUnitTestResultsAsync(this IOperationExecutionContext context, string trxFileName, string? testGroup)
     {
-        private static readonly LazyRegex DurationRegex = new(@"^(?<1>[0-9]+):(?<2>[0-9]+):(?<3>[0-9]+)(\.(?<4>[0-9]+))?$", RegexOptions.Compiled | RegexOptions.ExplicitCapture);
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrEmpty(trxFileName);
 
-        /// <summary>
-        /// Reads a .trx unit test result file and records its results in BuildMaster.
-        /// </summary>
-        /// <param name="context">The operation context.</param>
-        /// <param name="trxFileName">Full path to the .trx file to process. This must be an absolute path and the file must exist.</param>
-        /// <param name="testGroup">Group to record tests under in BuildMaster. May be null to use the default group.</param>
-        public static async Task RecordUnitTestResultsAsync(this IOperationExecutionContext context, string trxFileName, string testGroup)
+        var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
+
+        if (!await fileOps.FileExistsAsync(trxFileName))
         {
-            if (context == null)
-                throw new ArgumentNullException(nameof(context));
-            if (string.IsNullOrEmpty(trxFileName))
-                throw new ArgumentNullException(nameof(trxFileName));
+            context.Log.LogError($"Test output file {trxFileName} does not exist.");
+            return;
+        }
 
-            var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
+        XDocument doc;
+        using (var file = await fileOps.OpenFileAsync(trxFileName, FileMode.Open, FileAccess.Read))
+        using (var reader = new XmlTextReader(file) { Namespaces = false })
+        {
+            doc = XDocument.Load(reader);
+        }
 
-            if (!await fileOps.FileExistsAsync(trxFileName))
+        var testRecorder = await context.TryGetServiceAsync<IUnitTestRecorder>();
+        bool failures = false;
+
+        foreach (var result in doc.Element("TestRun")!.Element("Results")!.Elements("UnitTestResult"))
+        {
+            var testName = (string)result.Attribute("testName")!;
+            var outcome = (string)result.Attribute("outcome")!;
+            var output =
+                result.Element("Output")
+                // sometimes this is on InnerResults
+                ?? result.Descendants("Output").FirstOrDefault();
+            UnitTestStatus status;
+            string testResult;
+
+            if (string.Equals(outcome, "Passed", StringComparison.OrdinalIgnoreCase))
             {
-                context.Log.LogError($"Test output file {trxFileName} does not exist.");
-                return;
+                status = UnitTestStatus.Passed;
+                testResult = "Passed";
             }
-
-            XDocument doc;
-            using (var file = await fileOps.OpenFileAsync(trxFileName, FileMode.Open, FileAccess.Read))
-            using (var reader = new XmlTextReader(file) { Namespaces = false })
+            else if (string.Equals(outcome, "NotExecuted", StringComparison.OrdinalIgnoreCase))
             {
-                doc = XDocument.Load(reader);
-            }
-
-            var testRecorder = await context.TryGetServiceAsync<IUnitTestRecorder>();
-            bool failures = false;
-
-            foreach (var result in doc.Element("TestRun").Element("Results").Elements("UnitTestResult"))
-            {
-                var testName = (string)result.Attribute("testName");
-                var outcome = (string)result.Attribute("outcome");
-                var output =
-                    result.Element("Output")
-                    // sometimes this is on InnerResults
-                    ?? result.Descendants("Output").FirstOrDefault();
-                UnitTestStatus status;
-                string testResult;
-
-                if (string.Equals(outcome, "Passed", StringComparison.OrdinalIgnoreCase))
-                {
-                    status = UnitTestStatus.Passed;
-                    testResult = "Passed";
-                }
-                else if (string.Equals(outcome, "NotExecuted", StringComparison.OrdinalIgnoreCase))
-                {
-                    status = UnitTestStatus.Inconclusive;
-                    if (output == null)
-                        testResult = "Ignored";
-                    else
-                        testResult = GetResultTextFromOutput(output);
-                }
+                status = UnitTestStatus.Inconclusive;
+                if (output == null)
+                    testResult = "Ignored";
                 else
-                {
-                    status = UnitTestStatus.Failed;
-                    if (output == null)
-                        testResult = "No output found";
-                    else
-                        testResult = GetResultTextFromOutput(output);
-                    failures = true;
-                }
-
-                if (testRecorder != null)
-                {
-                    var startDate = (DateTimeOffset)result.Attribute("startTime");
-                    var duration = ParseDuration((string)result.Attribute("duration"));
-                    await testRecorder.RecordUnitTestAsync(AH.CoalesceString(testGroup, "Unit Tests"), testName, status, testResult, startDate, duration);
-                }
+                    testResult = GetResultTextFromOutput(output);
             }
-
-            if (failures)
-                context.Log.LogError("One or more unit tests failed.");
             else
-                context.Log.LogInformation("Tests completed with no failures.");
-        }
-
-        private static TimeSpan ParseDuration(string s)
-        {
-            if (!string.IsNullOrWhiteSpace(s))
             {
-                var m = DurationRegex.Match(s);
-                if (m.Success)
-                {
-                    int hours = int.Parse(m.Groups[1].Value);
-                    int minutes = int.Parse(m.Groups[2].Value);
-                    int seconds = int.Parse(m.Groups[3].Value);
-
-                    var timeSpan = new TimeSpan(hours, minutes, seconds);
-
-                    if (m.Groups[4].Success)
-                    {
-                        var fractionalSeconds = double.Parse("0." + m.Groups[4].Value, CultureInfo.InvariantCulture);
-                        timeSpan += TimeSpan.FromSeconds(fractionalSeconds);
-                    }
-
-                    return timeSpan;
-                }
+                status = UnitTestStatus.Failed;
+                if (output == null)
+                    testResult = "No output found";
+                else
+                    testResult = GetResultTextFromOutput(output);
+                failures = true;
             }
 
-            return TimeSpan.Zero;
-        }
-        private static string GetResultTextFromOutput(XElement output)
-        {
-            var message = string.Empty;
-            var errorInfo = output.Element("ErrorInfo");
-            if (errorInfo != null)
+            if (testRecorder != null)
             {
-                message = (string)errorInfo.Element("Message");
-                var trace = (string)errorInfo.Element("StackTrace");
-                if (!string.IsNullOrEmpty(trace))
-                    message += Environment.NewLine + trace;
+                var startDate = (DateTimeOffset)result.Attribute("startTime")!;
+                var duration = ParseDuration((string)result.Attribute("duration")!);
+                await testRecorder.RecordUnitTestAsync(AH.CoalesceString(testGroup, "Unit Tests"), testName, status, testResult, startDate, duration);
             }
-
-            return message;
         }
+
+        if (failures)
+            context.Log.LogError("One or more unit tests failed.");
+        else
+            context.Log.LogInformation("Tests completed with no failures.");
     }
+
+    private static TimeSpan ParseDuration(string s)
+    {
+        if (!string.IsNullOrWhiteSpace(s))
+        {
+            var m = DurationRegex().Match(s);
+            if (m.Success)
+            {
+                int hours = int.Parse(m.Groups[1].ValueSpan);
+                int minutes = int.Parse(m.Groups[2].ValueSpan);
+                int seconds = int.Parse(m.Groups[3].ValueSpan);
+
+                var timeSpan = new TimeSpan(hours, minutes, seconds);
+
+                if (m.Groups[4].Success)
+                {
+                    var fractionalSeconds = double.Parse($"0.{m.Groups[4].ValueSpan}", CultureInfo.InvariantCulture);
+                    timeSpan += TimeSpan.FromSeconds(fractionalSeconds);
+                }
+
+                return timeSpan;
+            }
+        }
+
+        return TimeSpan.Zero;
+    }
+    private static string GetResultTextFromOutput(XElement output)
+    {
+        var message = string.Empty;
+        var errorInfo = output.Element("ErrorInfo");
+        if (errorInfo != null)
+        {
+            message = (string?)errorInfo.Element("Message");
+            var trace = (string?)errorInfo.Element("StackTrace");
+            if (!string.IsNullOrEmpty(trace))
+                message += Environment.NewLine + trace;
+        }
+
+        return message ?? string.Empty;
+    }
+
+    [GeneratedRegex(@"^(?<1>[0-9]+):(?<2>[0-9]+):(?<3>[0-9]+)(\.(?<4>[0-9]+))?$", RegexOptions.ExplicitCapture | RegexOptions.Compiled)]
+    private static partial Regex DurationRegex();
 }

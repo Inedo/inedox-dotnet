@@ -15,9 +15,8 @@ using Inedo.Web;
 namespace Inedo.Extensions.DotNet.Operations.DotNet
 {
     [Tag(".net")]
-    public abstract class DotNetOperation : ExecuteOperation
+    public abstract partial class DotNetOperation : ExecuteOperation
     {
-        private static readonly LazyRegex WarningRegex = new(@"\bwarning\b", RegexOptions.Compiled);
         private static readonly Lazy<string> DotNetInstallPs1 = new(() => LoadScript("dotnet-install.ps1"));
         private static readonly Lazy<string> DotNetInstallSh = new(() => LoadScript("dotnet-install.sh"));
 
@@ -46,7 +45,7 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         [Description("Full path of dotnet.exe (or dotnet on Linux). This is usually C:\\Program Files\\dotnet\\dotnet.exe on Windows. If no value is supplied, the operation will default to %PROGRAMFILES%\\dotnet\\dotnet.exe for Windows and dotnet (from the path) on Linux.")]
         public string DotNetExePath { get; set; }
 
-        protected override void LogProcessOutput(string text) => this.Log(WarningRegex.IsMatch(text) ? MessageLevel.Warning : MessageLevel.Debug, text);
+        protected override void LogProcessOutput(string text) => this.Log(WarningRegex().IsMatch(text) ? MessageLevel.Warning : MessageLevel.Debug, text);
 
         protected async Task<string> GetDotNetExePath(IOperationExecutionContext context, string projectPath, bool logErrorIfNotFound = true)
         {
@@ -264,6 +263,9 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
             using var reader = new StreamReader(stream, InedoLib.UTF8Encoding);
             return reader.ReadToEnd();
         }
+
+        [GeneratedRegex(@":\s*warning\b")]
+        private static partial Regex WarningRegex();
 
         private sealed class NestedVariable : IRuntimeVariable
         {

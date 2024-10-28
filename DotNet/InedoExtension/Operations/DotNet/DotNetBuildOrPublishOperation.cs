@@ -1,12 +1,10 @@
 ﻿using System.ComponentModel;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
-using Inedo.ExecutionEngine.Executer;
 using Inedo.Extensibility;
 using Inedo.Extensibility.Operations;
 using Inedo.Extensibility.SecureResources;
@@ -18,10 +16,8 @@ using Inedo.Web;
 namespace Inedo.Extensions.DotNet.Operations.DotNet;
 
 [DefaultProperty(nameof(ProjectPath))]
-public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereOperation
+public abstract partial class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereOperation
 {
-    private static readonly LazyRegex ErrorRegex = new(@":\s*error\b", RegexOptions.Compiled);
-
     protected DotNetBuildOrPublishOperation()
     {
     }
@@ -98,7 +94,7 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
 
     protected override void LogProcessOutput(string text)
     {
-        if (this.UseContainer && ErrorRegex.IsMatch(text))
+        if (this.UseContainer && ErrorRegex().IsMatch(text))
             this.Log(MessageLevel.Error, text);
         else
             base.LogProcessOutput(text);
@@ -279,10 +275,13 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
         var fullArgs = args.ToString();
         this.LogDebug($"Executing dotnet {fullArgs}...");
 
-        bool errNothingToDo = false, errMsWebAppTargets = false, errMSB4062_tasks = false, errSourceAlreadyAdded = false;
+        bool errNothingToDo = false;
+        bool errMsWebAppTargets = false;
+        bool errMSB4062_tasks = false;
+        bool errSourceAlreadyAdded = false;
 
-
-        int res, sourceRes;
+        int res;
+        int sourceRes;
 
         var startInfo = new RemoteProcessStartInfo
         {
@@ -398,7 +397,7 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
             if (!errNothingToDo && e.Message.Contains("Nothing to do. None of the projects specified contain packages to restore."))
                 errNothingToDo = true;
 
-            if (!errMsWebAppTargets && Regex.IsMatch(e.Message, @"(error MSB4019: The imported project)(.*)(Web(Applications)?\\Microsoft\.)(.*)(\.targets)"))
+            if (!errMsWebAppTargets && WebAppTargetsErrorRegex().IsMatch(e.Message))
                 errMsWebAppTargets = true;
 
             if (!errMSB4062_tasks && e.Message.Contains("error MSB4062"))
@@ -452,6 +451,11 @@ public abstract class DotNetBuildOrPublishOperation : DotNetOperation, IVSWhereO
             extended
         );
     }
+
+    [GeneratedRegex(@":\s*error\b")]
+    private static partial Regex ErrorRegex();
+    [GeneratedRegex(@"(error MSB4019: The imported project)(.*)(Web(Applications)?\\Microsoft\.)(.*)(\.targets)")]
+    private static partial Regex WebAppTargetsErrorRegex();
 
     Task<int> IVSWhereOperation.ExecuteCommandLineAsync(IOperationExecutionContext context, RemoteProcessStartInfo startInfo) => this.ExecuteCommandLineAsync(context, startInfo);
 

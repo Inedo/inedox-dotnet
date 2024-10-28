@@ -1,11 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.IO;
-using System.Linq;
+﻿using System.ComponentModel;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using Inedo.Agents;
 using Inedo.Diagnostics;
 using Inedo.Documentation;
@@ -22,10 +17,9 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
     [ScriptNamespace("DotNet")]
     [Note("This operation is intended to be used when assembly version attributes are stored directly in AssemblyInfo.cs. To set these values in the project file instead, use DotNet::SetProjectVersion.")]
     [SeeAlso(typeof(SetProjectVersionOperation))]
-    public sealed class WriteAssemblyInfoVersionsOperation : ExecuteOperation
+    public sealed partial class WriteAssemblyInfoVersionsOperation : ExecuteOperation
     {
-        internal static readonly LazyRegex AttributeRegex = new(@"(?<1>(System\.Reflection\.)?Assembly(?<2>File|Informational)?Version(Attribute)?\s*\(\s*"")[^""]*(?<3>""\s*\))", RegexOptions.Compiled | RegexOptions.ExplicitCapture);
-        
+       
         [ScriptAlias("AssemblyVersion")]
         [ScriptAlias("Version", Obsolete = true)]
         [DisplayName("Assembly version")]
@@ -94,9 +88,9 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
                     encoding = reader.CurrentEncoding;
                 }
 
-                if (AttributeRegex.IsMatch(text))
+                if (AttributeRegex().IsMatch(text))
                 {
-                    text = AttributeRegex.Replace(text, this.GetReplacement);
+                    text = AttributeRegex().Replace(text, this.GetReplacement);
 
                     var attr = match.Attributes;
                     if ((attr & FileAttributes.ReadOnly) != 0)
@@ -139,5 +133,8 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
 
             return m.Groups[1].Value + version + m.Groups[3].Value;
         }
+
+        [GeneratedRegex(@"(?<1>(System\.Reflection\.)?Assembly(?<2>File|Informational)?Version(Attribute)?\s*\(\s*"")[^""]*(?<3>""\s*\))", RegexOptions.ExplicitCapture | RegexOptions.Compiled)]
+        private static partial Regex AttributeRegex();
     }
 }
