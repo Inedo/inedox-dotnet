@@ -83,6 +83,11 @@ public abstract partial class DotNetBuildOrPublishOperation : DotNetOperation, I
     [DisplayName("CI build")]
     [Description("Sets the ContinuousIntegrationBuild MSBuild flag, which is recommended for all official (non-local) builds.")]
     public bool ContinuousIntegrationBuild { get; set; } = true;
+    [Category("Advanced")]
+    [ScriptAlias("AllowInsecureConnections")]
+    [DisplayName("Allow Insecure NuGet Source Connections")]
+    [Description("Passes the \"--allow-insecure-connections\" argument when registering a NuGet source.")]
+    public bool AllowInsecureConnections { get; set; }
 
     [ScriptAlias("ImageBasedService")]
     [SuggestableValue(typeof(DotNetIBSSuggestionProvider))]
@@ -305,7 +310,7 @@ public abstract partial class DotNetBuildOrPublishOperation : DotNetOperation, I
             sourceRes = await execAsync(new RemoteProcessStartInfo
             {
                 FileName = dotNetPath,
-                Arguments = $"nuget add source {progetNugetSource.Url} -n {progetNugetSource.SourceName} -u {progetNugetSource.UserName} -p {progetNugetSource.Password}",
+                Arguments = $"nuget add source {progetNugetSource.Url} -n {progetNugetSource.SourceName} -u {progetNugetSource.UserName} -p {progetNugetSource.Password} {(this.AllowInsecureConnections ? "--allow-insecure-connections" : string.Empty)}",
                 WorkingDirectory = context.WorkingDirectory,
             });
             this.MessageLogged -= NuGetAddSource_MessageLogged;
