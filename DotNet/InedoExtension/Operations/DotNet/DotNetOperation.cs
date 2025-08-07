@@ -41,9 +41,10 @@ namespace Inedo.Extensions.DotNet.Operations.DotNet
         [ScriptAlias("DotNetPath")]
         [ScriptAlias("DotNetExePath", Obsolete = true)]
         [DisplayName("dotnet path")]
-        [PlaceholderText("default")]
+        [PlaceholderText("$DotNetExePath")]
         [Description("Full path of dotnet.exe (or dotnet on Linux). This is usually C:\\Program Files\\dotnet\\dotnet.exe on Windows. If no value is supplied, the operation will default to %PROGRAMFILES%\\dotnet\\dotnet.exe for Windows and dotnet (from the path) on Linux.")]
-        public string DotNetExePath { get; set; }
+        [DefaultValue("$DotNetExePath")]
+        public string DotNetExePath { get; set; } = "$DotNetExePath";
 
         protected override void LogProcessOutput(string text) => this.Log(WarningRegex().IsMatch(text) ? MessageLevel.Warning : MessageLevel.Debug, text);
 
