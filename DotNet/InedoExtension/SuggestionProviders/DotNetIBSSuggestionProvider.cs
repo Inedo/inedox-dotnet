@@ -5,5 +5,5 @@ namespace Inedo.Extensions.DotNet.SuggestionProviders;
 
 internal sealed class DotNetIBSSuggestionProvider : ImageBasedServiceSuggestionProvider
 {
-    protected override ImmutableArray<string> RequiredCapabilities => ImmutableArray.Create("dotnet");
+    protected override ImmutableArray<string> RequiredCapabilities => ["dotnet"];
 }

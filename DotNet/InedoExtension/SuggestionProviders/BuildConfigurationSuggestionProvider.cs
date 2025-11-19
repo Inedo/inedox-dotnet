@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
-using Inedo.Extensibility;
+﻿using Inedo.Extensibility;
 using Inedo.Web;
 
 namespace Inedo.Extensions.DotNet.SuggestionProviders
@@ -9,7 +7,7 @@ namespace Inedo.Extensions.DotNet.SuggestionProviders
     {
         public Task<IEnumerable<string>> GetSuggestionsAsync(IComponentConfiguration config)
         {
-            var values = (IEnumerable<string>)new[] { "Release", "Debug" };
+            var values = (IEnumerable<string>)["Release", "Debug"];
             return Task.FromResult(values);
         }
     }
