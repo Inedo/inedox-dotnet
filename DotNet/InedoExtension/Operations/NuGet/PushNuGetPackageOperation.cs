@@ -263,11 +263,21 @@ public sealed class PushNuGetPackageOperation : NuGetOperation
     {
         try
         {
-            var client = new ProGetClient(credentials);
-            await foreach (var feed in client.GetFeedsAsync(cancellationToken).ConfigureAwait(false))
+            ProGetClient? client = null;
+            if (!string.IsNullOrEmpty(credentials.ServiceUrl))
             {
-                if (string.Equals(feed.Name, feedName, StringComparison.OrdinalIgnoreCase))
-                    return feed.EndpointUrl;
+                if (!string.IsNullOrEmpty(credentials.APIKey))
+                    client = new ProGetClient(credentials.ServiceUrl, credentials.APIKey);
+                else if (!string.IsNullOrEmpty(credentials.UserName))
+                    client = new ProGetClient(credentials.ServiceUrl, credentials.UserName, credentials.Password ?? string.Empty);
+                else
+                    client = new ProGetClient(credentials.ServiceUrl);
+            }
+
+            if (client is not null)
+            {
+                var feed = await client.GetFeedAsync(feedName, cancellationToken);
+                return feed.EndpointUrl;
             }
         }
         catch
