@@ -1,14 +1,13 @@
 ﻿using Inedo.Extensibility;
 using Inedo.Web;
 
-namespace Inedo.Extensions.DotNet.SuggestionProviders
+namespace Inedo.Extensions.DotNet.SuggestionProviders;
+
+internal sealed class BuildConfigurationSuggestionProvider : ISuggestionProvider
 {
-    public sealed class BuildConfigurationSuggestionProvider : ISuggestionProvider
+    public IAsyncEnumerable<string> GetSuggestionsAsync(IComponentConfiguration config, CancellationToken cancellationToken)
     {
-        public Task<IEnumerable<string>> GetSuggestionsAsync(IComponentConfiguration config)
-        {
-            var values = (IEnumerable<string>)["Release", "Debug"];
-            return Task.FromResult(values);
-        }
+        IEnumerable<string> values = ["Release", "Debug"];
+        return values.ToAsyncEnumerable();
     }
 }
