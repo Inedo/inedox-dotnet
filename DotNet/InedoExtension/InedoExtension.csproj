@@ -12,8 +12,8 @@
     <None Remove="vswhere.exe" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Inedo.ProGet" Version="2.1.1" />
-    <PackageReference Include="Inedo.SDK" Version="4.0.0-ci.7">
+    <PackageReference Include="Inedo.ProGet" Version="2.1.4" />
+    <PackageReference Include="Inedo.SDK" Version="4.0.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Jdt" Version="0.9.23" />
