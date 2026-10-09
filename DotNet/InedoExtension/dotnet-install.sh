@@ -298,11 +298,20 @@ get_machine_architecture() {
     if command -v uname > /dev/null; then
         CPUName=$(uname -m)
         case $CPUName in
+        armv1*|armv2*|armv3*|armv4*|armv5*|armv6*)
+            echo "armv6-or-below"
+            return 0
+            ;;
         armv*l)
             echo "arm"
             return 0
             ;;
         aarch64|arm64)
+            if [ "$(getconf LONG_BIT)" -lt 64 ]; then
+                # This is 32-bit OS running on 64-bit CPU (for example Raspberry Pi OS)
+                echo "arm"
+                return 0
+            fi
             echo "arm64"
             return 0
             ;;
@@ -316,6 +325,14 @@ get_machine_architecture() {
             ;;
         loongarch64)
             echo "loongarch64"
+            return 0
+            ;;
+        riscv64)
+            echo "riscv64"
+            return 0
+            ;;
+        powerpc|ppc)
+            echo "ppc"
             return 0
             ;;
         esac
@@ -334,7 +351,13 @@ get_normalized_architecture_from_architecture() {
     local architecture="$(to_lowercase "$1")"
 
     if [[ $architecture == \<auto\> ]]; then
-        echo "$(get_machine_architecture)"
+        machine_architecture="$(get_machine_architecture)"
+        if [[ "$machine_architecture" == "armv6-or-below" ]]; then
+            say_err "Architecture \`$machine_architecture\` not supported. If you think this is a bug, report it at https://github.com/dotnet/install-scripts/issues"
+            return 1
+        fi
+
+        echo $machine_architecture
         return 0
     fi
 
@@ -400,11 +423,17 @@ get_normalized_architecture_for_specific_sdk_version() {
 # args:
 # version or channel - $1
 is_arm64_supported() {
-    #any channel or version that starts with the specified versions
-    case "$1" in
-        ( "1"* | "2"* | "3"*  | "4"* | "5"*) 
-            echo false
-            return 0
+    # Extract the major version by splitting on the dot
+    major_version="${1%%.*}"
+
+    # Check if the major version is a valid number and less than 6
+    case "$major_version" in
+        [0-9]*)  
+            if [ "$major_version" -lt 6 ]; then
+                echo false
+                return 0
+            fi
+            ;;
     esac
 
     echo true
@@ -423,8 +452,13 @@ get_normalized_os() {
                 echo "$osname"
                 return 0
                 ;;
+            macos)
+                osname='osx'
+                echo "$osname"
+                return 0
+                ;;
             *)
-                say_err "'$user_defined_os' is not a supported value for --os option, supported values are: osx, linux, linux-musl, freebsd, rhel.6. If you think this is a bug, report it at https://github.com/dotnet/install-scripts/issues."
+                say_err "'$user_defined_os' is not a supported value for --os option, supported values are: osx, macos, linux, linux-musl, freebsd, rhel.6. If you think this is a bug, report it at https://github.com/dotnet/install-scripts/issues."
                 return 1
                 ;;
         esac
@@ -443,7 +477,7 @@ get_normalized_quality() {
     local quality="$(to_lowercase "$1")"
     if [ ! -z "$quality" ]; then
         case "$quality" in
-            daily | signed | validated | preview)
+            daily | preview)
                 echo "$quality"
                 return 0
                 ;;
@@ -452,7 +486,7 @@ get_normalized_quality() {
                 return 0
                 ;;
             *)
-                say_err "'$quality' is not a supported value for --quality option. Supported values are: daily, signed, validated, preview, ga. If you think this is a bug, report it at https://github.com/dotnet/install-scripts/issues."
+                say_err "'$quality' is not a supported value for --quality option. Supported values are: daily, preview, ga. If you think this is a bug, report it at https://github.com/dotnet/install-scripts/issues."
                 return 1
                 ;;
         esac
@@ -568,7 +602,8 @@ validate_remote_local_file_sizes()
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         file_size="$(stat -c '%s' "$downloaded_file")"
     elif [[ "$OSTYPE" == "darwin"* ]]; then
-        file_size="$(stat -f '%z' "$downloaded_file")"
+        # hardcode in order to avoid conflicts with GNU stat
+        file_size="$(/usr/bin/stat -f '%z' "$downloaded_file")"
     fi  
     
     if [ -n "$file_size" ]; then
@@ -626,7 +661,7 @@ parse_globaljson_file_for_version() {
         return 1
     fi
 
-    sdk_section=$(cat $json_file | tr -d "\r" | awk '/"sdk"/,/}/')
+    sdk_section=$(cat "$json_file" | tr -d "\r" | awk '/"sdk"/,/}/')
     if [ -z "$sdk_section" ]; then
         say_err "Unable to parse the SDK node in \`$json_file\`"
         return 1
@@ -748,7 +783,7 @@ get_specific_product_version() {
 
         if machine_has "curl"
         then
-            if ! specific_product_version=$(curl -s --fail "${download_link}${feed_credential}" 2>&1); then
+            if ! specific_product_version=$(curl -sL --fail "${download_link}${feed_credential}" 2>&1); then
                 continue
             else
                 echo "${specific_product_version//[$'\t\r\n']}"
@@ -922,6 +957,37 @@ get_absolute_path() {
 }
 
 # args:
+# override - $1 (boolean, true or false)
+get_cp_options() {
+    eval $invocation
+
+    local override="$1"
+    local override_switch=""
+
+    if [ "$override" = false ]; then
+        override_switch="-n"
+
+        # create temporary files to check if 'cp -u' is supported
+        tmp_dir="$(mktemp -d)"
+        tmp_file="$tmp_dir/testfile"
+        tmp_file2="$tmp_dir/testfile2"
+
+        touch "$tmp_file"
+
+        # use -u instead of -n if it's available
+        if cp -u "$tmp_file" "$tmp_file2" 2>/dev/null; then
+            override_switch="-u"
+        fi
+
+        # clean up
+        rm -f "$tmp_file" "$tmp_file2"
+        rm -rf "$tmp_dir"
+    fi
+
+    echo "$override_switch"
+}
+
+# args:
 # input_files - stdin
 # root_path - $1
 # out_path - $2
@@ -932,25 +998,17 @@ copy_files_or_dirs_from_list() {
     local root_path="$(remove_trailing_slash "$1")"
     local out_path="$(remove_trailing_slash "$2")"
     local override="$3"
-    local osname="$(get_current_os_name)"
-    local override_switch=$(
-        if [ "$override" = false ]; then
-            if [ "$osname" = "linux-musl" ]; then
-                printf -- "-u";
-            else
-                printf -- "-n";
-            fi
-        fi)
+    local override_switch="$(get_cp_options "$override")"
 
     cat | uniq | while read -r file_path; do
         local path="$(remove_beginning_slash "${file_path#$root_path}")"
         local target="$out_path/$path"
-        if [ "$override" = true ] || (! ([ -d "$target" ] || [ -e "$target" ])); then
+        if [ "$override" = true ] || (! ([ -d "$target" ] || [ -e "$target" ] || [ -L "$target" ])); then
             mkdir -p "$out_path/$(dirname "$path")"
-            if [ -d "$target" ]; then
+            if [ -d "$target" ] || [ -L "$target" ]; then
                 rm -rf "$target"
             fi
-            cp -R $override_switch "$root_path/$path" "$target"
+            cp -RP $override_switch "$root_path/$path" "$target"
         fi
     done
 }
@@ -995,14 +1053,14 @@ extract_dotnet_package() {
     tar -xzf "$zip_path" -C "$temp_out_path" > /dev/null || failed=true
 
     local folders_with_version_regex='^.*/[0-9]+\.[0-9]+[^/]+/'
-    find "$temp_out_path" -type f | grep -Eo "$folders_with_version_regex" | sort | copy_files_or_dirs_from_list "$temp_out_path" "$out_path" false
-    find "$temp_out_path" -type f | grep -Ev "$folders_with_version_regex" | copy_files_or_dirs_from_list "$temp_out_path" "$out_path" "$override_non_versioned_files"
+    find "$temp_out_path" \( -type f -o -type l \) | grep -Eo "$folders_with_version_regex" | sort | copy_files_or_dirs_from_list "$temp_out_path" "$out_path" false
+    find "$temp_out_path" \( -type f -o -type l \) | grep -Ev "$folders_with_version_regex" | copy_files_or_dirs_from_list "$temp_out_path" "$out_path" "$override_non_versioned_files"
     
     validate_remote_local_file_sizes "$zip_path" "$remote_file_size"
     
     rm -rf "$temp_out_path"
     if [ -z ${keep_zip+x} ]; then
-        rm -f "$zip_path" && say_verbose "Temporary zip file $zip_path was removed"
+        rm -f "$zip_path" && say_verbose "Temporary archive file $zip_path was removed"
     fi
 
     if [ "$failed" = true ]; then
@@ -1111,11 +1169,11 @@ download() {
             exit 1
         fi
 
-        if [ "$failed" = false ] || [ $attempts -ge 3 ] || { [ ! -z $http_code ] && [ $http_code = "404" ]; }; then
+        if [ "$failed" = false ] || [ $attempts -ge 3 ] || { [ -n "${http_code-}" ] && [ "${http_code}" = "404" ]; }; then
             break
         fi
 
-        say "Download attempt #$attempts has failed: $http_code $download_error_msg"
+        say "Download attempt #$attempts has failed: ${http_code-} ${download_error_msg-}"
         say "Attempt #$((attempts+1)) will start in $((attempts*10)) seconds."
         sleep $((attempts*10))
     done
@@ -1140,13 +1198,19 @@ downloadcurl() {
     local curl_options="--retry 20 --retry-delay 2 --connect-timeout 15 -sSL -f --create-dirs "
     local curl_exit_code=0;
     if [ -z "$out_path" ]; then
-        curl $curl_options "$remote_path_with_credential" 2>&1
+        curl_output=$(curl $curl_options "$remote_path_with_credential" 2>&1)
         curl_exit_code=$?
+        echo "$curl_output"
     else
-        curl $curl_options -o "$out_path" "$remote_path_with_credential" 2>&1
+        curl_output=$(curl $curl_options -o "$out_path" "$remote_path_with_credential" 2>&1)
         curl_exit_code=$?
     fi
-    
+
+    # Regression in curl causes curl with --retry to return a 0 exit code even when it fails to download a file - https://github.com/curl/curl/issues/17554
+    if [ $curl_exit_code -eq 0 ] && echo "$curl_output" | grep -q "^curl: ([0-9]*) "; then
+        curl_exit_code=$(echo "$curl_output" | sed 's/curl: (\([0-9]*\)).*/\1/')
+    fi
+
     if [ $curl_exit_code -gt 0 ]; then
         download_error_msg="Unable to download $remote_path."
         # Check for curl timeout codes
@@ -1248,8 +1312,14 @@ get_download_link_from_aka_ms() {
     say_verbose "Received response: $response"
     # Get results of all the redirects.
     http_codes=$( echo "$response" | awk '$1 ~ /^HTTP/ {print $2}' )
-    # They all need to be 301, otherwise some links are broken (except for the last, which is not a redirect but 200 or 404).
-    broken_redirects=$( echo "$http_codes" | sed '$d' | grep -v '301' )
+    # Allow intermediate 301 redirects and tolerate proxy-injected 200s
+    broken_redirects=$( echo "$http_codes" | sed '$d' | grep -vE '^(301|200)$' )
+    # The response may end without final code 2xx/4xx/5xx somehow, e.g. network restrictions on www.bing.com causes redirecting to bing.com fails with connection refused.
+    # In this case it should not exclude the last.
+    last_http_code=$(  echo "$http_codes" | tail -n 1 )
+    if ! [[ $last_http_code =~ ^(2|4|5)[0-9][0-9]$ ]]; then
+        broken_redirects=$( echo "$http_codes" | grep -vE '^(301|200)$' )
+    fi
 
     # All HTTP codes are 301 (Moved Permanently), the redirect link exists.
     if [[ -z "$broken_redirects" ]]; then
@@ -1271,23 +1341,16 @@ get_download_link_from_aka_ms() {
 get_feeds_to_use()
 {
     feeds=(
-    "https://dotnetcli.azureedge.net/dotnet"
-    "https://dotnetbuilds.azureedge.net/public"
+    "https://builds.dotnet.microsoft.com/dotnet"
+    "https://ci.dot.net/public"
     )
 
     if [[ -n "$azure_feed" ]]; then
         feeds=("$azure_feed")
     fi
 
-    if [[ "$no_cdn" == "true" ]]; then
-        feeds=(
-        "https://dotnetcli.blob.core.windows.net/dotnet"
-        "https://dotnetbuilds.blob.core.windows.net/public"
-        )
-
-        if [[ -n "$uncached_feed" ]]; then
-            feeds=("$uncached_feed")
-        fi
+    if [[ -n "$uncached_feed" ]]; then
+        feeds=("$uncached_feed")
     fi
 }
 
@@ -1419,7 +1482,7 @@ generate_regular_links() {
         link_types+=("legacy")
     else
         legacy_download_link=""
-        say_verbose "Cound not construct a legacy_download_link; omitting..."
+        say_verbose "Could not construct a legacy_download_link; omitting..."
     fi
 
     #  Check if the SDK version is already installed.
@@ -1501,7 +1564,7 @@ install_dotnet() {
 
     mkdir -p "$install_root"
     zip_path="${zip_path:-$(mktemp "$temporary_file_template")}"
-    say_verbose "Zip path: $zip_path"
+    say_verbose "Archive path: $zip_path"
 
     for link_index in "${!download_links[@]}"
     do
@@ -1517,15 +1580,15 @@ install_dotnet() {
         download "$download_link" "$zip_path" 2>&1 || download_failed=true
 
         if [ "$download_failed" = true ]; then
-            case $http_code in
+            case ${http_code-} in
             404)
                 say "The resource at $link_type link '$download_link' is not available."
                 ;;
             *)
-                say "Failed to download $link_type link '$download_link': $download_error_msg"
+                say "Failed to download $link_type link '$download_link': ${http_code-} ${download_error_msg-}"
                 ;;
             esac
-            rm -f "$zip_path" 2>&1 && say_verbose "Temporary zip file $zip_path was removed"
+            rm -f "$zip_path" 2>&1 && say_verbose "Temporary archive file $zip_path was removed"
         else
             download_completed=true
             break
@@ -1540,7 +1603,7 @@ install_dotnet() {
 
     remote_file_size="$(get_remote_file_size "$download_link")"
 
-    say "Extracting zip from $download_link"
+    say "Extracting archive from $download_link"
     extract_dotnet_package "$zip_path" "$install_root" "$remote_file_size" || return 1
 
     #  Check if the SDK version is installed; if not, fail the installation.
@@ -1583,7 +1646,6 @@ install_dir="<auto>"
 architecture="<auto>"
 dry_run=false
 no_path=false
-no_cdn=false
 azure_feed=""
 uncached_feed=""
 feed_credential=""
@@ -1656,10 +1718,6 @@ do
             verbose=true
             non_dynamic_parameters+=" $name"
             ;;
-        --no-cdn|-[Nn]o[Cc]dn)
-            no_cdn=true
-            non_dynamic_parameters+=" $name"
-            ;;
         --azure-feed|-[Aa]zure[Ff]eed)
             shift
             azure_feed="$1"
@@ -1700,9 +1758,13 @@ do
             zip_path="$1"
             ;;
         -?|--?|-h|--help|-[Hh]elp)
-            script_name="$(basename "$0")"
+            script_name="dotnet-install.sh"
             echo ".NET Tools Installer"
-            echo "Usage: $script_name [-c|--channel <CHANNEL>] [-v|--version <VERSION>] [-p|--prefix <DESTINATION>]"
+            echo "Usage:"
+            echo "       # Install a .NET SDK of a given Quality from a given Channel"
+            echo "       $script_name [-c|--channel <CHANNEL>] [-q|--quality <QUALITY>]"
+            echo "       # Install a .NET SDK of a specific public version"
+            echo "       $script_name [-v|--version <VERSION>]"
             echo "       $script_name -h|-?|--help"
             echo ""
             echo "$script_name is a simple command line interface for obtaining dotnet cli."
@@ -1732,9 +1794,8 @@ do
             echo "              examples: 2.0.0-preview2-006120; 1.1.0"
             echo "  -q,--quality <quality>         Download the latest build of specified quality in the channel."
             echo "      -Quality"
-            echo "          The possible values are: daily, signed, validated, preview, GA."
+            echo "          The possible values are: daily, preview, GA."
             echo "          Works only in combination with channel. Not applicable for STS and LTS channels and will be ignored if those channels are used." 
-            echo "          For SDK use channel in A.B.Cxx format. Using quality for SDK together with channel in A.B format is not supported." 
             echo "          Supported since 5.0 release." 
             echo "          Note: The version parameter overrides the channel parameter when any version other than 'latest' is used, and therefore overrides the quality."
             echo "  --internal,-Internal               Download internal builds. Requires providing credentials via --feed-credential parameter."
@@ -1760,13 +1821,10 @@ do
             echo "  --verbose,-Verbose                 Display diagnostics information."
             echo "  --azure-feed,-AzureFeed            For internal use only."
             echo "                                     Allows using a different storage to download SDK archives from."
-            echo "                                     This parameter is only used if --no-cdn is false."
             echo "  --uncached-feed,-UncachedFeed      For internal use only."
             echo "                                     Allows using a different storage to download SDK archives from."
-            echo "                                     This parameter is only used if --no-cdn is true."
             echo "  --skip-non-versioned-files         Skips non-versioned files if they already exist, such as the dotnet executable."
             echo "      -SkipNonVersionedFiles"
-            echo "  --no-cdn,-NoCdn                    Disable downloading from the Azure CDN, and use the uncached feed directly."
             echo "  --jsonfile <JSONFILE>              Determines the SDK version from a user specified global.json file."
             echo "                                     Note: global.json must have a value for 'SDK:Version'"
             echo "  --keep-zip,-KeepZip                If set, downloaded file is kept."
